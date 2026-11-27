@@ -157,7 +157,7 @@ tasks:
     title: "module-b 单测夹具切到契约入口，脱离 A 的 mock"
     module: module-b
     owner: worker-module-b
-    state: in_progress
+    state: review
     deps: [TASK-MODULE-B-001]
     contracts: [contracts/module-b/v1.yaml, contracts/module-a/v1.yaml]
     allowed_paths:
