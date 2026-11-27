@@ -6,7 +6,7 @@
 - 契约提案：`contracts/module-b/proposals/20261127-semantics.md`（orchestrator 2026-11-27 受理，additive / minor；收口轮两项变更预批）
 - 上游：PR #2 → `75dd608`，`contracts/module-a/v1.yaml` 提供 `error_surface` 与 `list_entries.semantics.from_parameter`；主线 `aa89a36` 已 merge（`adbefb0`）
 - 交付提交：`41aa630`（契约 `0341029`、实现与测试 `41aa630`）；本报告随后一笔提交入库
-- PR：见仓库 PR 链接（标题 `feat(module-b): report domain per contract v1 (TASK-MODULE-B-001)`）
+- PR：[#3](https://github.com/Stainless5792/test-multi-agent-framework-skill/pull/3)（`feat(module-b): report domain per contract v1 (TASK-MODULE-B-001)`）
 
 ```
 TASK: TASK-MODULE-B-001
