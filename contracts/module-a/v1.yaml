@@ -19,6 +19,13 @@ methods:
     errors: [INVALID_CURRENCY, DUPLICATE_ACCOUNT_NAME]
     idempotent: false
     side_effects: creates_account
+    semantics:
+      name_normalization: "去首尾空白后保存；两个仅相差首尾空白的名字视为同名"
+      name_uniqueness: "同一 LedgerService 实例内唯一，且跨币种唯一（不按币种分区）；重名 → DUPLICATE_ACCOUNT_NAME"
+      currency: "必须是现行 ISO 4217 三字母大写代码，不做大小写归一化；未知代码或非字符串 → INVALID_CURRENCY"
+      field_order: "校验顺序 name → currency → 重名；前一项失败后不再校验后续项"
+      generated_fields: "id 为 uuid4 字符串；created_at 为带 UTC 偏移的 ISO 8601 字符串"
+      precondition_violation: "name 非字符串或去空白后为空 → ValueError（契约无对应错误码）"
 
   - name: record_entry
     kind: request_response
@@ -35,6 +42,14 @@ methods:
     errors: [ACCOUNT_NOT_FOUND, INVALID_AMOUNT, INVALID_CATEGORY]
     idempotent: false
     side_effects: creates_entry
+    semantics:
+      amount: "最小货币单位正整数；<= 0、非整数、bool 均 INVALID_AMOUNT"
+      category_default: "未提供时 Entry.category 输出空字符串"
+      category_normalization: "去首尾空白；去空白后为空、超 64 字符或含控制字符 → INVALID_CATEGORY"
+      memo_default: "未提供时 Entry.memo 输出空字符串"
+      memo_normalization: "提供时去首尾空白后保存"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
+      precondition_violation: "kind 不是 income|expense → ValueError"
 
   - name: get_balance
     kind: request_response
@@ -46,6 +61,10 @@ methods:
     errors: [ACCOUNT_NOT_FOUND]
     idempotent: true
     side_effects: none
+    semantics:
+      as_of: "含当天：只累计 occurred_on <= as_of 的流水；as_of 未提供时累计全部"
+      amount: "有符号：income 合计 - expense 合计"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
 
   - name: list_entries
     kind: request_response
@@ -59,6 +78,11 @@ methods:
     errors: [ACCOUNT_NOT_FOUND, INVALID_DATE_RANGE]
     idempotent: true
     side_effects: none
+    semantics:
+      range: "闭区间：from <= occurred_on <= to；任一端可省略，两端都可省略时返回全部"
+      order: "按 occurred_on 升序；同一日期内保持写入（创建）顺序，排序必须稳定"
+      limit: "在上述排序之后取前 N 条；提供时必须为正整数，否则 ValueError"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
 
 types:
   Account:
@@ -72,8 +96,8 @@ types:
     amount: { type: integer }
     kind: { type: string, enum: [income, expense] }
     occurred_on: { type: string, format: date }
-    category: { type: string }
-    memo: { type: string }
+    category: { type: string }   # 缺省 ""；归一化规则见 record_entry.semantics
+    memo: { type: string }       # 缺省 ""；提供时去首尾空白
     created_at: { type: string, format: date-time }
   Balance:
     account_id: { type: string, format: uuid }
@@ -91,6 +115,13 @@ error_codes:
 versioning:
   strategy: semver_method
   deprecation_window: 1_release
+
+# 下游接入方式由本块唯一决定（提案 proposals/20261127-entrypoint.md，方案 A）。
+# factory 必须写成 <import 名>:<类名>，不允许下游猜模块名。
+implementation:
+  module_path: modules/module-a        # 相对仓库根
+  factory: "ledger:LedgerService"      # <import 名>:<类名>
+  bootstrap: sys_path                  # 调用方需把 module_path 加入 sys.path
 
 mocks:
   path: contracts/module-a/mocks/ledger_service.py
