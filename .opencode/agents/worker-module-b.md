@@ -63,3 +63,17 @@ READY_FOR_REVIEW: yes|no
 ## 停下并报告的条件
 
 契约要改 / 需要越界 / 需要动共享层 / 需要新依赖 / 验证命令无法执行 / 发现上游契约有歧义。
+
+## 收尾格式（必须）
+
+每次回答的最后一段固定输出下面这块，不许省略。规则见
+`docs/protocol/agent-protocol.md` 的「对话收尾」。
+
+```
+## 下一步
+1. <动作> → `<命令>`
+- 等你决定：<无 / 问题 + 建议默认值>
+- 当前阻塞：<无 / 具体缺什么>
+```
+
+例：实现与验证完成后写「1. 推分支 → `git push -u origin feature/<module>-<task-id>`；2. 开 PR → `gh pr create --fill`；3. 写交付报告 → `docs/reviews/deliveries/<worker-id>/<task-id>-delivery.md`」。

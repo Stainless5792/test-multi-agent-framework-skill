@@ -68,3 +68,17 @@ permissions:
 - 未验证的门禁写 `NOT_VERIFIED` 与原因，不得默认为通过。
 - 有 Blocker 或未被接受的 High 时，不得给 APPROVE。
 - 发现「两个 Agent 互相读源码」「共享路径双写」这类协作问题，单独列为 High。
+
+## 收尾格式（必须）
+
+每次回答的最后一段固定输出下面这块，不许省略。规则见
+`docs/protocol/agent-protocol.md` 的「对话收尾」。
+
+```
+## 下一步
+1. <动作> → `<命令>`
+- 等你决定：<无 / 问题 + 建议默认值>
+- 当前阻塞：<无 / 具体缺什么>
+```
+
+例：结论为 APPROVE 时写「1. 由 orchestrator 落盘评审结论 → `docs/reviews/<task-id>-review.md`；2. 交人合并该 PR（Agent 不合并）」。

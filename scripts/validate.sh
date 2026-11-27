@@ -51,7 +51,7 @@ for f in $required; do
   [ -e "$f" ] && continue
   case "$f" in
     .agent/project-dependencies.yaml|.agent/task-dag.yaml)
-      warn "缺少 $f（单模块项目可接受）" ;;
+      warn "缺少 ${f}（单模块项目可接受）" ;;
     *) fail "缺少 $f" ;;
   esac
 done
@@ -67,6 +67,21 @@ if [ -d .opencode/agents ]; then
   done
   n_workers="$(ls .opencode/agents/worker-*.md 2>/dev/null | grep -v 'worker-template' | wc -l | tr -d ' ')"
   [ "$n_workers" -ge 1 ] && ok "worker agent: $n_workers 个" || warn "还没有 worker-<module>.md（第 4 步生成）"
+fi
+
+# ---- 收尾格式：agent 必须要求输出「下一步」----------------------------------
+# 已有项目的 .opencode/agents/*.md 不被 upgrade 覆盖，这里只提示，不判失败。
+if [ -d .opencode/agents ]; then
+  missing_next=""
+  for a in .opencode/agents/orchestrator.md .opencode/agents/reviewer.md .opencode/agents/worker-*.md; do
+    [ -f "$a" ] || continue
+    grep -q '^## 下一步' "$a" || missing_next="$missing_next $a"
+  done
+  if [ -z "$missing_next" ]; then
+    ok "agent 含「下一步」收尾段"
+  else
+    warn "agent 缺「下一步」收尾段:${missing_next}（新版模板已带；可手工补，或加 --force 重跑脚手架）"
+  fi
 fi
 
 # ---- 结构与就绪（python3 + PyYAML）------------------------------------------
@@ -169,6 +184,18 @@ PY
   [ "$rc" -eq 0 ] && ok "结构与就绪检查通过"
 else
   warn "没有 python3+PyYAML，跳过结构与就绪检查"
+fi
+
+# ---- 框架版本 ----------------------------------------------------------------
+if [ -f .agent/framework.json ]; then
+  proj_ver="$(python3 -c 'import json;print(json.load(open(".agent/framework.json")).get("version",""))' 2>/dev/null)"
+  skill_dir="${MAF_SKILL_DIR:-$HOME/.config/opencode/skills/multi-agent-framework}"
+  if [ -f "$skill_dir/VERSION" ]; then
+    live_ver="$(cat "$skill_dir/VERSION" 2>/dev/null)"
+    if [ -n "$proj_ver" ] && [ -n "$live_ver" ] && [ "$proj_ver" != "$live_ver" ]; then
+      warn "框架版本 $proj_ver → ${live_ver}，可运行 bash scripts/upgrade.sh"
+    fi
+  fi
 fi
 
 # ---- OpenCode 是否真的加载了 agent ------------------------------------------
