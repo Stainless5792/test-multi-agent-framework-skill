@@ -1,30 +1,36 @@
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[3]
 REPORT_DIR = ROOT / "modules/module-b"
-LEDGER_MOCK = ROOT / "contracts/module-a/mocks/ledger_service.py"
+LEDGER_CONTRACT = ROOT / "contracts/module-a/v1.yaml"
+
+
+def _resolve_module(implementation: dict[str, Any]) -> Any:
+    module_path = str(ROOT / implementation["module_path"])
+    if module_path not in sys.path:
+        sys.path.insert(0, module_path)
+    return importlib.import_module(implementation["factory"].split(":", 1)[0])
+
+
+def _load_ledger_class() -> Any:
+    contract = yaml.safe_load(LEDGER_CONTRACT.read_text(encoding="utf-8"))
+    implementation = contract["implementation"]
+    module = _resolve_module(implementation)
+    return getattr(module, implementation["factory"].split(":", 1)[1])
 
 
 def _load_report_module() -> Any:
     if str(REPORT_DIR) not in sys.path:
         sys.path.insert(0, str(REPORT_DIR))
     return importlib.import_module("report")
-
-
-def _load_ledger_mock() -> Any:
-    spec = importlib.util.spec_from_file_location("module_a_mock_ledger", LEDGER_MOCK)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +40,7 @@ def report_module() -> Any:
 
 @pytest.fixture
 def ledger() -> Any:
-    return _load_ledger_mock().LedgerService()
+    return _load_ledger_class()()
 
 
 @pytest.fixture
