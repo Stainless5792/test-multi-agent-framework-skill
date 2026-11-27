@@ -263,8 +263,16 @@ def test_contract_declares_implementation_entrypoint(contract: dict) -> None:
 def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> None:
     methods = {method["name"]: method for method in _methods(contract)}
 
-    for name in ("record_entry", "get_balance", "list_entries"):
-        assert "semantics" in methods[name], f"{name} 缺少 semantics（提案 20261127-semantics.md）"
+    for name in ("create_account", "record_entry", "get_balance", "list_entries"):
+        assert "semantics" in methods[name], f"{name} 缺少 semantics"
+    assert set(methods["create_account"]["semantics"]) >= {
+        "name_normalization",
+        "name_uniqueness",
+        "currency",
+        "field_order",
+        "generated_fields",
+        "precondition_violation",
+    }
     assert set(methods["record_entry"]["semantics"]) >= {
         "amount",
         "category_default",

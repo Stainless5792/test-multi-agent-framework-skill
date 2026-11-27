@@ -3,7 +3,7 @@
 - 提案人: worker-module-a
 - 目标契约: `contracts/module-a/v1.yaml`
 - 兼容性判定: additive（minor；只补声明，不删字段、不改类型、不改枚举、不改错误码语义）
-- 判定: 待受理
+- 判定: accepted（orchestrator, 2026-11-27）；建议 1/3 不采纳，建议 2 按 v1 冻结、建议 4 按现状写进契约
 - 影响面: `worker-module-a`（实现方）、`worker-module-b`（本契约消费者）。
   按 `contracts/module-b/v1.yaml`，B 的方法只接收 `account_id`，不调用
   `create_account`；但 B 的测试夹具若自行造账户，会直接踩这里的三条规则。
@@ -98,3 +98,40 @@ additive / minor：只新增 `semantics` 键，不删字段、不改 `input` / `
    返回 `ValueError` 而不是 `INVALID_CURRENCY`。若下游按「先报币种错」的假设写
    分支，会与实际不符；本提案把顺序写进 `semantics.field_order` 就是为了消除
    这种猜测。
+
+## 受理记录
+
+- 2026-11-27 accepted（orchestrator）。四条建议的处置如下。
+
+### 建议① 新增 `INVALID_NAME`：**不采纳**
+
+`name` 是必填字段，去空白后为空属「必填值缺失」，与 `category`（可选、有命名规则）
+不同类。新增错误码会把「业务失败可枚举」扩成参数校验清单，且现有 6 个错误码是
+`TASK-MODULE-A-001` 的验收基线。**口径：必填值缺失抛 `ValueError`**，已写进
+`modules/module-a/README.md`，并在契约 `semantics.precondition_violation` 里固定。
+
+### 建议② 唯一性范围：**v1 冻结**
+
+冻结为「同一 `LedgerService` 实例内、跨币种唯一」，作为契约事实写进
+`semantics.name_uniqueness`。**在引入持久化或 `TASK-MODULE-A-002` 之前必须单独
+提案重定，届时属 breaking**（契约 `stability: stable`，
+`versioning.strategy: semver_method`）。同一注记已写进
+`contracts/module-a/CHANGELOG.md`。
+
+### 建议③ 币种大小写：**不归一化**
+
+`INVALID_CURRENCY` 覆盖：非字符串、非三字母大写、未知代码。放宽容错（例如接受
+`"usd"` 并归一化为 `"USD"`）属后续语义变更，走提案，不随本提案夹带。
+
+### 建议④ 校验顺序：**按现状写进契约**
+
+顺序为 `name → currency → 重名`，错误码归属由顺序决定：
+`create_account(name="", currency="usd")` 返回 `ValueError` 而非 `INVALID_CURRENCY`。
+
+### 落地结果
+
+- `contracts/module-a/v1.yaml` 的 `create_account.semantics`（2026-11-27）
+- `contracts/module-a/CHANGELOG.md` 第三条 additive 变更 + 持久化注记
+- `tests/contracts/module-a/test_ledger_contract.py::test_contract_declares_semantics_for_stateful_methods`
+  的键集合断言扩展到四个方法
+- `modules/module-a/README.md`：「必填值缺失抛 `ValueError`」口径

@@ -56,17 +56,24 @@ entries = service.list_entries(account_id=account["id"], **{"from": "2026-01-01"
 
 ## 契约已声明的语义（2026-11-27 起）
 
-排序、`from` / `to` 区间开闭、`as_of` 边界、`category` / `memo` 缺省与归一化、
-日期输入格式，以及 `kind` 非枚举 / 非法日期 / `limit <= 0` 抛 `ValueError`，
-全部写在契约 `v1.yaml` 的 `semantics` 块里（提案
-`proposals/20261127-semantics.md`，变更记录 `CHANGELOG.md`）。本文件不再复制。
+四个方法的可观察行为都写在契约 `v1.yaml` 的 `semantics` 块里，本文件不再复制：
 
-仍不在契约、由实现补齐的只有：
+- `create_account`：`name` 去首尾空白、唯一性范围（同一实例内 + 跨币种）、
+  `currency` 不做大小写归一化、校验顺序 `name → currency → 重名`、
+  `id` / `created_at` 的生成规则（提案 `proposals/20261127-create-account-semantics.md`）。
+- `record_entry` / `get_balance` / `list_entries`：排序、`from` / `to` 区间开闭、
+  `as_of` 边界、`category` / `memo` 缺省与归一化、日期输入格式
+  （提案 `proposals/20261127-semantics.md`）。
+- 变更记录与「唯一性范围在 v1 冻结」的注记见 `CHANGELOG.md`。
 
-| 项 | 本实现的规则 |
-|---|---|
-| `currency` | 现行 ISO 4217 三字母代码，区分大小写，表见 `ledger.ISO4217_CODES` |
-| 账户名 | 去首尾空白后非空；命名空间为「本实例全局」，与币种无关；重名返回 409 |
+### 异常口径
+
+- 业务失败 → `LedgerError`，`code` 只取契约 `error_codes` 的 6 个键。
+- **必填值缺失 / 违反契约已声明的类型** → `ValueError`，不进 `error_codes`。
+  例如 `create_account(name="")`（必填值缺失）、`kind` 非枚举、日期格式非法、
+  `limit <= 0`。`create_account` 的 `name` 与 `record_entry` 的可选 `category`
+  不同类：前者是必填值缺失，后者是可选字段的命名规则违反（后者有
+  `INVALID_CATEGORY`）。
 
 ## 下游
 
@@ -80,4 +87,6 @@ entries = service.list_entries(account_id=account["id"], **{"from": "2026-01-01"
   `TASK-MODULE-A-002`（`modules/module_a/` 可导入包）为 backlog。
 - `proposals/20261127-semantics.md`：accepted（additive / minor）。契约补齐
   `semantics` 块，日期输入收紧为 `YYYY-MM-DD`。
+- `proposals/20261127-create-account-semantics.md`：accepted（additive / minor）。
+  `create_account` 的三条留白写进契约；唯一性范围在 v1 冻结。
 - 变更记录：`contracts/module-a/CHANGELOG.md`。

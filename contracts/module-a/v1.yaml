@@ -19,6 +19,13 @@ methods:
     errors: [INVALID_CURRENCY, DUPLICATE_ACCOUNT_NAME]
     idempotent: false
     side_effects: creates_account
+    semantics:
+      name_normalization: "去首尾空白后保存；两个仅相差首尾空白的名字视为同名"
+      name_uniqueness: "同一 LedgerService 实例内唯一，且跨币种唯一（不按币种分区）；重名 → DUPLICATE_ACCOUNT_NAME"
+      currency: "必须是现行 ISO 4217 三字母大写代码，不做大小写归一化；未知代码或非字符串 → INVALID_CURRENCY"
+      field_order: "校验顺序 name → currency → 重名；前一项失败后不再校验后续项"
+      generated_fields: "id 为 uuid4 字符串；created_at 为带 UTC 偏移的 ISO 8601 字符串"
+      precondition_violation: "name 非字符串或去空白后为空 → ValueError（契约无对应错误码）"
 
   - name: record_entry
     kind: request_response
