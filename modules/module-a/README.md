@@ -74,7 +74,13 @@ entries = service.list_entries(account_id=account["id"], **{"from": "2026-01-01"
 
 ### 异常口径
 
-- 业务失败 → `LedgerError`，`code` 只取契约 `error_codes` 的 6 个键。
+契约 `error_surface` 规定：业务失败以异常交付，消费者只依赖
+`code` / `http_status` / `retryable` 三个属性与 `code` 的取值域。
+
+- 业务失败 → 异常对象（本实现是 `LedgerError`，mock 是自己的同名类），
+  `code` 只取契约 `error_codes` 的 6 个键。
+- **类名不是契约事实**：不要写 `except LedgerError` / `isinstance(...)` 分支，
+  按 `hasattr` + `code` 判断；mock 与真实实现的类不同。
 - **必填值缺失 / 违反契约已声明的类型** → `ValueError`，不进 `error_codes`。
   例如 `create_account(name="")`（必填值缺失）、`kind` 非枚举、日期格式非法、
   `limit <= 0`。`create_account` 的 `name` 与 `record_entry` 的可选 `category`
