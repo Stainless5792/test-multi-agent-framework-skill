@@ -66,6 +66,12 @@ entries = service.list_entries(account_id=account["id"], **{"from": "2026-01-01"
   （提案 `proposals/20261127-semantics.md`）。
 - 变更记录与「唯一性范围在 v1 冻结」的注记见 `CHANGELOG.md`。
 
+### `currency` 表版本
+
+`ledger.ISO4217_CODES` 是 v1 快照，只收**现行**代码；新增或退市代码属语义变更，
+需提案。已按此移除 `CUC`（2021 并入 `CUP`）与 `SLL`（2022 并入 `SLE`），
+两者现在返回 `INVALID_CURRENCY`。
+
 ### 异常口径
 
 - 业务失败 → `LedgerError`，`code` 只取契约 `error_codes` 的 6 个键。

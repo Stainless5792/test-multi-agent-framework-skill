@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import UTC, date, datetime
 from typing import Any, Literal, TypedDict
@@ -70,16 +71,18 @@ class Balance(TypedDict):
     amount: int
 
 
+# ISO 4217 现行代码表（v1 快照）。契约 input.currency 的 format=iso4217 由它判定。
+# 新增/退市代码属语义变更，需提案；已按此移除 CUC（2021 并入 CUP）与 SLL（2022 并入 SLE）。
 ISO4217_CODES: frozenset[str] = frozenset(
     """
     AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND
     BOB BOV BRL BSD BTN BWP BYN BZD CAD CDF CHE CHF CHW CLF CLP CNY COP COU
-    CRC CUC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS
+    CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS
     GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY
     KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA
     MKD MMK MNT MOP MRU MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD
     OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK
-    SGD SHP SLE SLL SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD
+    SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD
     TWD TZS UAH UGX USD USN UYI UYU UYW UZS VED VES VND VUV WST XAF XAG XAU
     XBA XBB XBC XBD XCD XCG XDR XOF XPD XPF XPT XSU XTS XUA XXX YER ZAR ZMW
     ZWG
@@ -120,8 +123,8 @@ def _normalize_category(category: str | None) -> str:
             "INVALID_CATEGORY",
             f"category 必须为 1..{CATEGORY_MAX_LENGTH} 个字符",
         )
-    if any(ord(char) < 32 for char in normalized):
-        raise LedgerError("INVALID_CATEGORY", "category 不能包含控制字符")
+    if any(unicodedata.category(char) == "Cc" for char in normalized):
+        raise LedgerError("INVALID_CATEGORY", "category 不能包含控制字符（Unicode Cc）")
     return normalized
 
 

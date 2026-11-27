@@ -191,11 +191,38 @@ def _date_input_rejects_non_yyyy_mm_dd(module: ModuleType) -> dict[str, Any]:
     return results
 
 
+def _control_chars(module: ModuleType) -> dict[str, Any]:
+    service, account = _open(module)
+    results: dict[str, Any] = {}
+
+    def rejects(value: str) -> Callable[[], None]:
+        def action() -> None:
+            _record(service, account, 1, "income", "2026-01-01", category=value)
+
+        return action
+
+    for label, value in (("del", "a\x7fb"), ("c1", "a\x9fb"), ("c0", "a\x00b")):
+        results[label] = _error(module, rejects(value))
+    return results
+
+
+def _duplicate_name_across_currency(module: ModuleType) -> dict[str, Any]:
+    service = module.LedgerService()
+    service.create_account(name="Cash", currency="USD")
+
+    def second_same_name_other_currency() -> None:
+        service.create_account(name="Cash", currency="EUR")
+
+    return _error(module, second_same_name_other_currency)
+
+
 SCENARIOS: dict[str, Callable[[ModuleType], dict[str, Any]]] = {
     "as_of_boundary": _as_of_boundary,
+    "control_chars": _control_chars,
     "date_input_rejects_non_yyyy_mm_dd": _date_input_rejects_non_yyyy_mm_dd,
     "defaults_and_normalization": _defaults_and_normalization,
     "duplicate_account_name": _duplicate_account_name,
+    "duplicate_name_across_currency": _duplicate_name_across_currency,
     "invalid_amount": _invalid_amount,
     "invalid_category": _invalid_category,
     "invalid_date_range": _invalid_date_range,

@@ -265,7 +265,7 @@ def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> Non
 
     for name in ("create_account", "record_entry", "get_balance", "list_entries"):
         assert "semantics" in methods[name], f"{name} 缺少 semantics"
-    assert set(methods["create_account"]["semantics"]) >= {
+    assert set(methods["create_account"]["semantics"]) == {
         "name_normalization",
         "name_uniqueness",
         "currency",
@@ -273,7 +273,7 @@ def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> Non
         "generated_fields",
         "precondition_violation",
     }
-    assert set(methods["record_entry"]["semantics"]) >= {
+    assert set(methods["record_entry"]["semantics"]) == {
         "amount",
         "category_default",
         "category_normalization",
@@ -282,8 +282,13 @@ def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> Non
         "date_input",
         "precondition_violation",
     }
-    assert {"as_of", "amount", "date_input"} <= set(methods["get_balance"]["semantics"])
-    assert {"range", "order", "limit", "date_input"} <= set(methods["list_entries"]["semantics"])
+    assert set(methods["get_balance"]["semantics"]) == {"as_of", "amount", "date_input"}
+    assert set(methods["list_entries"]["semantics"]) == {
+        "range",
+        "order",
+        "limit",
+        "date_input",
+    }
 
 
 def test_implementation_entrypoint_resolves(contract: dict) -> None:
@@ -335,3 +340,33 @@ def test_read_side_rejects_non_yyyy_mm_dd(
 
     with pytest.raises(ValueError):
         getattr(service, method)(account_id=account["id"], **{field: value})
+
+
+# 复审 F10：契约写「含控制字符 → INVALID_CATEGORY」，须覆盖 C0（\x00、\t）、
+# DEL（\x7f）与 C1（\x9f），按 Unicode Cc 判定。
+@pytest.mark.parametrize("category", ["a\x00b", "a\tb", "a\x7fb", "a\x9fb"])
+def test_record_entry_rejects_control_characters(ledger: ModuleType, category: str) -> None:
+    service = ledger.LedgerService()
+    account = service.create_account(name="Cash", currency="USD")["account"]
+
+    with pytest.raises(ledger.LedgerError) as excinfo:
+        service.record_entry(
+            account_id=account["id"],
+            amount=1,
+            kind="income",
+            occurred_on="2026-01-01",
+            category=category,
+        )
+
+    assert excinfo.value.code == "INVALID_CATEGORY"
+
+
+# 复审 F11：CUC（2021 并入 CUP）与 SLL（2022 并入 SLE）已退市，不属「现行 ISO 4217」。
+@pytest.mark.parametrize("currency", ["CUC", "SLL"])
+def test_create_account_rejects_retired_currency(ledger: ModuleType, currency: str) -> None:
+    service = ledger.LedgerService()
+
+    with pytest.raises(ledger.LedgerError) as excinfo:
+        service.create_account(name="Cash", currency=currency)
+
+    assert excinfo.value.code == "INVALID_CURRENCY"

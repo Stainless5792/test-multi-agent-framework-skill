@@ -306,3 +306,14 @@ def test_entry_id_is_uuid_and_created_at_is_isoformat(service, account):
 
     uuid.UUID(entry["id"])
     datetime.fromisoformat(entry["created_at"])
+
+
+# 18. 名称唯一性跨币种：Cash/USD 之后 Cash/EUR 仍冲突（契约 v1 冻结）
+def test_duplicate_name_across_currencies_raises_conflict(service, ledger):
+    service.create_account(name="Cash", currency="USD")
+
+    with pytest.raises(ledger.LedgerError) as excinfo:
+        service.create_account(name="Cash", currency="EUR")
+
+    assert excinfo.value.code == "DUPLICATE_ACCOUNT_NAME"
+    assert excinfo.value.http_status == 409

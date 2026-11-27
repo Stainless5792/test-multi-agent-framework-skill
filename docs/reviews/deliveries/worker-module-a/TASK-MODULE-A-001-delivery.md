@@ -12,14 +12,23 @@
 
 ```
 TASK: TASK-MODULE-A-001
-BRANCH: feature/module-a-TASK-MODULE-A-001   HEAD: 9553ab0
+BRANCH: feature/module-a-TASK-MODULE-A-001   HEAD: 复审收口提交
+      （F10/F11/F12/F13/F15；前一笔代码提交 9553ab0，`git log -1 --format=%h` 即本交付 SHA）
 CHANGED:
   modules/module-a/            ledger.py, README.md
   contracts/module-a/          v1.yaml, CHANGELOG.md, mocks/ledger_service.py,
                                proposals/20261127-{entrypoint,semantics,create-account-semantics}.md
   tests/modules/module-a/      conftest.py, test_ledger_service.py
   tests/contracts/module-a/    test_ledger_contract.py, test_ledger_parity.py
+  docs/reviews/deliveries/worker-module-a/  TASK-MODULE-A-001-delivery.md
 CONTRACTS: contracts/module-a/v1.yaml（v1）| deltas: 3 份提案，均 accepted（additive/minor）
+VERIFY:
+  uv run pytest tests/contracts/module-a tests/modules/module-a   exit=0  109 passed, 1 skipped
+  uv run ruff check .                                             exit=0  All checks passed!
+  uv run ruff format --check .                                    exit=0  6 files already formatted
+  uv run mypy .                                                   exit=0  Success: no issues found in 6 source files
+  bash scripts/contract-check.sh                                  exit=0  契约: 2 份，失败 0
+  bash scripts/ownership-check.sh origin/main HEAD --owner worker-module-a  exit=0  13 个文件全部在所有权范围内
 CROSS-MODULE: 消费方 worker-module-b；只依赖 contracts/module-a/v1.yaml，未 import 对方代码
 RISKS: integration / security 门禁仍 TBD；CI 未接线；mock 与实现并存至 B 合入
 READY_FOR_REVIEW: YES
@@ -64,7 +73,7 @@ READY_FOR_REVIEW: YES
 
 | 命令 | 退出码 | 关键输出 |
 |---|---|---|
-| `uv run pytest tests/contracts/module-a tests/modules/module-a` | 0 | `94 passed, 1 skipped` |
+| `uv run pytest tests/contracts/module-a tests/modules/module-a` | 0 | `109 passed, 1 skipped` |
 | `uv run ruff check .` | 0 | `All checks passed!` |
 | `uv run ruff format --check .` | 0 | `6 files already formatted` |
 | `uv run mypy .` | 0 | `Success: no issues found in 6 source files` |
