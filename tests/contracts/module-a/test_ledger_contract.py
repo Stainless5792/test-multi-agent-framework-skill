@@ -2,10 +2,10 @@
 
 同一套断言同时覆盖真实实现和供 module-b 使用的 Mock。
 
-项目 dev 依赖里没有 PyYAML（`uv run pytest` 的 venv 里 import yaml 会失败），
-所以这里用一个只覆盖 contracts/module-a/v1.yaml 所用 YAML 子集的解析器：
-块映射、块序列、行内 `{}`/`[]`、注释、字符串/整数/布尔/null。
-`test_contract_loader_reads_the_real_file` 用真实契约固定它的输出。
+契约用 `yaml.safe_load` 直接读 `contracts/module-a/v1.yaml`（dev 依赖已含 pyyaml）。
+`test_contract_loader_reads_the_real_file` 与各 `*_declares_*` 断言把契约的
+方法名、错误码键、`implementation`、`semantics` 键集合钉死，契约被改而测试
+不察觉时会先在这里红。
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+import yaml  # type: ignore[import-untyped]  # dev 组有 pyyaml，无 types-PyYAML；加 stub 后删这行
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONTRACT_PATH = REPO_ROOT / "contracts" / "module-a" / "v1.yaml"
@@ -36,135 +37,11 @@ ALIASES = {"from_": "from"}
 PARAMETER_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
 
 
-def _strip_comment(line: str) -> str:
-    quote = ""
-    for index, char in enumerate(line):
-        if quote:
-            if char == quote:
-                quote = ""
-        elif char in ("'", '"'):
-            quote = char
-        elif char == "#":
-            return line[:index]
-    return line
-
-
-def _split_flow(text: str) -> list[str]:
-    parts: list[str] = []
-    current = ""
-    depth = 0
-    quote = ""
-    for char in text:
-        if quote:
-            current += char
-            if char == quote:
-                quote = ""
-        elif char in ("'", '"'):
-            quote = char
-            current += char
-        elif char in "{[":
-            depth += 1
-            current += char
-        elif char in "}]":
-            depth -= 1
-            current += char
-        elif char == "," and depth == 0:
-            parts.append(current.strip())
-            current = ""
-        else:
-            current += char
-    if current.strip():
-        parts.append(current.strip())
-    return parts
-
-
-def _parse_flow(text: str) -> object:
-    text = text.strip()
-    if text.startswith("[") and text.endswith("]"):
-        return [_parse_flow(part) for part in _split_flow(text[1:-1])]
-    if text.startswith("{") and text.endswith("}"):
-        result: dict[str, object] = {}
-        for part in _split_flow(text[1:-1]):
-            key, _, value = part.partition(":")
-            result[key.strip()] = _parse_flow(value)
-        return result
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
-        return text[1:-1]
-    if text in ("true", "false"):
-        return text == "true"
-    if text in ("", "null", "~"):
-        return None
-    try:
-        return int(text)
-    except ValueError:
-        return text
-
-
-def _parse_mapping(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[object, int]:
-    result: dict[str, object] = {}
-    while index < len(lines) and lines[index][0] == indent:
-        text = lines[index][1]
-        key, separator, remainder = text.partition(":")
-        if not separator:
-            raise ValueError(f"无法解析映射行: {text}")
-        remainder = remainder.strip()
-        index += 1
-        if remainder:
-            result[key.strip()] = _parse_flow(remainder)
-        elif index < len(lines) and lines[index][0] > indent:
-            result[key.strip()], index = _parse_block(lines, index, lines[index][0])
-        else:
-            result[key.strip()] = None
-    return result, index
-
-
-def _parse_sequence(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[object, int]:
-    items: list[object] = []
-    while index < len(lines) and lines[index][0] == indent and lines[index][1].startswith("-"):
-        remainder = lines[index][1][1:].strip()
-        index += 1
-        item: object
-        if not remainder:
-            if index < len(lines) and lines[index][0] > indent:
-                item, index = _parse_block(lines, index, lines[index][0])
-            else:
-                item = None
-        elif ":" in remainder and not remainder.startswith(("{", "[")):
-            key, _, value = remainder.partition(":")
-            mapping: dict[str, object] = {
-                key.strip(): _parse_flow(value) if value.strip() else None
-            }
-            if index < len(lines) and lines[index][0] > indent:
-                more, index = _parse_block(lines, index, lines[index][0])
-                assert isinstance(more, dict)
-                mapping.update(more)
-            item = mapping
-        else:
-            item = _parse_flow(remainder)
-        items.append(item)
-    return items, index
-
-
-def _parse_block(lines: list[tuple[int, str]], index: int, indent: int) -> tuple[object, int]:
-    if lines[index][1].startswith("-"):
-        return _parse_sequence(lines, index, indent)
-    return _parse_mapping(lines, index, indent)
-
-
 def _load_contract(path: Path) -> dict:
-    lines: list[tuple[int, str]] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        text = _strip_comment(raw).rstrip()
-        if text.strip():
-            lines.append((len(text) - len(text.lstrip(" ")), text.strip()))
-    if not lines:
-        raise ValueError(f"契约文件为空: {path}")
-    value, index = _parse_block(lines, 0, lines[0][0])
-    if index != len(lines):
-        raise ValueError(f"契约有未解析内容，下一个有效行: {lines[index][1]}")
-    if not isinstance(value, dict):
-        raise ValueError("契约顶层必须是映射")
-    return value
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"契约顶层必须是映射: {path}")
+    return data
 
 
 def _load_mock() -> ModuleType:
