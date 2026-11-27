@@ -42,6 +42,24 @@ RISKS: <未验证项与原因>
 READY_FOR_REVIEW: yes|no
 ```
 
+## 心跳（必须写）
+
+三个时点写 `.agent/workers/worker-module-a.json`：开工后、每次验证通过或失败后、结束时。
+
+```json
+{
+  "worker": "worker-module-a",
+  "task": "<task-id>",
+  "state": "working | blocked | done",
+  "updated": "2026-11-27T15:40:12Z",
+  "branch": "feature/module-a-<task-id>",
+  "head": "<sha>",
+  "note": "一句话说清在做什么；blocked 时写具体阻塞点"
+}
+```
+
+为什么必须写：看板靠它区分"还在思考"和"在等人"。没有心跳，编排者只能看到一个变旧的时间戳。
+
 ## 停下并报告的条件
 
 契约要改 / 需要越界 / 需要动共享层 / 需要新依赖 / 验证命令无法执行 / 发现上游契约有歧义。

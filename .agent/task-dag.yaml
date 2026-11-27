@@ -25,7 +25,7 @@ tasks:
     title: "module-a 账目域首个可交付切片（账户 / 流水 / 余额）"
     module: module-a
     owner: worker-module-a
-    state: ready
+    state: review
     deps: [TASK-000]
     contracts: [contracts/module-a/v1.yaml]
     allowed_paths:
@@ -51,6 +51,40 @@ tasks:
     deliverables: [branch, report, contract_deltas]
     mock: { needed: false, path: null }
     blocked_by: null
+
+  - id: TASK-MODULE-A-002
+    title: "module-a 改为可导入包（消除 sys.path 注入与裸模块名）"
+    module: module-a
+    owner: worker-module-a
+    state: backlog
+    deps: [TASK-MODULE-A-001]
+    contracts: [contracts/module-a/v1.yaml]
+    allowed_paths:
+      - modules/module-a/**
+      - modules/module_a/**
+      - tests/modules/module-a/**
+      - tests/contracts/module-a/**
+      - contracts/module-a/**
+    forbidden_paths:
+      - shared/**
+      - modules/module-b/**
+      - contracts/module-b/**
+      - scripts/**
+      - .agent/**
+      - pyproject.toml
+    acceptance:
+      - modules/module_a 为常规包，from modules.module_a.ledger import LedgerService 可用
+      - 契约 implementation 字段改为 module_path=modules / factory=module_a:LedgerService，bootstrap 移除
+      - 旧目录 modules/module-a 移除或仅保留 README 指针，无重复实现
+      - 契约测试与 parity 测试按新入口运行通过
+    verify_cmds:
+      - uv run pytest tests/modules/module-a tests/contracts/module-a
+      - uv run ruff check .
+      - uv run mypy .
+      - bash scripts/ownership-check.sh origin/main HEAD
+    deliverables: [branch, report, contract_deltas]
+    mock: { needed: false, path: null }
+    blocked_by: "触发条件：module-a 出现第二个实现文件，或 module-b 集成测试落地前；届时 orchestrator 先加 modules/module_a/** 所有权与 allowed_paths"
 
   - id: TASK-MODULE-B-001
     title: "module-b 报表域首个可交付切片（月度汇总 / 分类统计）"

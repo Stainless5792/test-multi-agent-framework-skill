@@ -12,6 +12,10 @@ htmlcov/
 
 # 本地运行产物
 .agent/logs/
+.agent/workers/
+.agent/dashboard.json
+.agent/dashboard.lock
+.agent/dashboard.log
 
 # 编辑器 / 系统
 .DS_Store
