@@ -73,17 +73,22 @@ add("工作区干净", worktree and not dirty, "有未提交改动" if dirty els
 
 owner = t.get("owner", "")
 delivery_path = ""
-for cand in (f"docs/reviews/deliveries/{owner}/{task_id}-delivery.md",
-             f"docs/reviews/{task_id}-delivery.md"):
-    if os.path.exists(cand):
-        delivery_path = cand
+delivery_note = "docs/reviews/deliveries/%s/%s-delivery.md" % (owner, task_id)
+for root in ([worktree] if worktree else []) + ["."]:
+    for cand in (f"docs/reviews/deliveries/{owner}/{task_id}-delivery.md",
+                 f"docs/reviews/{task_id}-delivery.md"):
+        p2 = os.path.join(root, cand)
+        if os.path.exists(p2):
+            delivery_path = p2
+            delivery_note = cand
+            break
+    if delivery_path:
         break
 ready_flag = False
 if delivery_path:
     s = open(delivery_path, encoding="utf-8").read()
     ready_flag = "VERIFY" in s and "READY_FOR_REVIEW: YES" in s.upper()
-add("交付报告", bool(delivery_path) and ready_flag,
-    delivery_path or ("docs/reviews/deliveries/%s/%s-delivery.md" % (owner, task_id)))
+add("交付报告", bool(delivery_path) and ready_flag, delivery_note)
 
 def run_script(name, args):
     if not worktree:
@@ -93,9 +98,12 @@ def run_script(name, args):
     return r.returncode == 0, (lines[-1] if lines else "")
 
 if worktree:
-    ok5, n5 = run_script("ownership-check.sh", [base, "HEAD", "--owner", t.get("owner", "")])
+    # base 可能在开工后前移；用 merge-base 比较，避免把 base 的新提交算成「分支删除」
+    ok, mb = git("-C", worktree, "merge-base", base, "HEAD")
+    diff_base = mb if ok and mb else base
+    ok5, n5 = run_script("ownership-check.sh", [diff_base, "HEAD", "--owner", t.get("owner", "")])
     add("所有权", ok5, n5)
-    ok6, n6 = run_script("contract-check.sh", ["--base", base])
+    ok6, n6 = run_script("contract-check.sh", ["--base", diff_base])
     add("契约兼容", ok6, n6)
     if run_gates:
         ok7, n7 = run_script("integration-check.sh", ["--only", "contract,ownership,unit"])
