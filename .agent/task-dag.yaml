@@ -202,9 +202,11 @@ tasks:
       - scripts/**
       - .agent/**
     acceptance:
-      - contracts/module-a/mocks/ 不再存在，契约里也不再有 mocks.path 指向它
-      - 契约测试与 parity 测试改为只对真实实现断言，或在删除 mock 后重写 parity 断言
-      - 全仓 uv run pytest 全绿
+      - contracts/module-a/mocks/ 不再存在；契约删掉 mocks 节（先走提案受理）
+      - 删除 tests/contracts/module-a/test_ledger_parity.py（mock 删除后 parity 没有比对对象，真实实现已由契约测试覆盖）
+      - 删除 test_mock_is_standalone 及其参数化引用（该测试只为 mock 存在）
+      - tests/contracts/module-a/test_ledger_contract.py 的 MOCK_PATH / mock 夹具一并清掉
+      - 全仓 uv run pytest 0 skipped 且 exit 0
     verify_cmds:
       - uv run pytest
       - uv run ruff check .
