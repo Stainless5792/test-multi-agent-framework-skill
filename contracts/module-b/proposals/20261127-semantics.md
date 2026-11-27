@@ -4,7 +4,7 @@
 - 目标契约: `contracts/module-b/v1.yaml`
 - 兼容性判定: **additive（minor）**——只新增 `semantics` / `implementation` 与注释，
   不删字段、不改类型、不改枚举、不改任何 `error_codes` 键
-- 判定: **pending**（等 orchestrator 受理）
+- 判定: **accepted**（orchestrator, 2026-11-27）
 - 影响面: `worker-module-b`（唯一实现方）；`contracts/module-b/v1.yaml` 的
   `contract.consumers` 为空数组，当前无下游代码受影响。跨模块只涉及
   `worker-module-a` 的两处契约缺口 X1 / X2（见「跨模块依赖与缺口」），不需要 A 改实现
@@ -60,7 +60,7 @@ methods:
       net: "有符号整数：income - expense；可为负，不取绝对值"
       period_field: "输出 period 为输入年月的 YYYY-MM：年份 4 位零填充、月份 2 位零填充（year=1, month=1 → '0001-01'）"
       empty_result: "账户存在但区间内无任何流水 → summary 正常返回，income=expense=net=0，period 按输入回填；不返回空对象、不报错"
-      validation_order: "先校验 year/month（类型 → ValueError；范围 → INVALID_PERIOD），再调用上游取数（ACCOUNT_NOT_FOUND）；year/month 非法时即使 account_id 不存在也返回 INVALID_PERIOD 或 ValueError"
+      validation_order: "先校验 year/month（类型 → ValueError；范围 → INVALID_PERIOD），再调用上游取数（ACCOUNT_NOT_FOUND）；year/month 非法时即使 account_id 不存在也返回 INVALID_PERIOD 或 ValueError；先校验参数再查数据：输入形态错误不依赖数据存在性，也避免无谓调用上游"
       error_passthrough: "ACCOUNT_NOT_FOUND 不由 B 预判：仅当上游以 ACCOUNT_NOT_FOUND 失败时，B 以自身错误载体重抛同码（http=404、retryable=false，见 error_codes），message 原样携带但只用于诊断、不作稳定承诺；不向上游消费者暴露上游异常类型；上游其余业务错误码视为上游违约，B 抛 RuntimeError，不新增契约错误码"
       upstream_call: "只调用 list_entries(account_id, **{'from': from, 'to': to})，from/to 为本节 period_window 的日期；禁止传 limit（会截断汇总）；不用 get_balance（其 as_of 只能表达上界，无法表达月初下界）"
 
@@ -78,8 +78,8 @@ methods:
     semantics:
       range: "闭区间：from <= occurred_on <= to，含首尾两天；from == to 合法（单日区间）；与上游 list_entries.semantics.range 一致"
       date_input: "from / to 只接受 YYYY-MM-DD 严格形态（长度 10、第 5/8 位为 '-'）；紧凑格式 20260101、ISO 周日期 2026-W01-4、datetime、None 或缺省 → ValueError，与上游 list_entries.semantics.date_input 同口径"
-      validation_order: "先校验日期形态（ValueError）与区间方向（from > to → INVALID_DATE_RANGE），再调用上游取数（ACCOUNT_NOT_FOUND）；区间非法时即使 account_id 不存在也返回 INVALID_DATE_RANGE 或 ValueError"
-      scope: "只统计 kind=expense 的流水；income 不计入，也不产生分类项；金额单位为账户的最小货币单位，不做币种换算"
+      validation_order: "先校验日期形态（ValueError）与区间方向（from > to → INVALID_DATE_RANGE），再调用上游取数（ACCOUNT_NOT_FOUND）；区间非法时即使 account_id 不存在也返回 INVALID_DATE_RANGE 或 ValueError；先校验参数再查数据：输入形态错误不依赖数据存在性，也避免无谓调用上游"
+      scope: "只统计 kind=expense 的流水；income 不计入，也不产生分类项；金额单位为账户的最小货币单位，不做币种换算；v1 不提供 income 维度，需要时另开方法或提案"
       grouping: "按上游 Entry.category 原值分组（上游已去首尾空白，B 不再归一化）；空字符串 '' 是合法分组并输出 category: ''；不同分类不合并、不改写、不按大小写折叠"
       total: "该分类 expense 的 amount 之和，正整数（上游 amount 恒 >= 1）；输出中不存在 total <= 0 的项，因此没有零额分类"
       order: "按 total 降序；total 相同时按 category 的 Unicode 码点升序（Python 默认字符串比较，不受 locale 影响）；排序稳定"
@@ -257,9 +257,33 @@ B 计划统一用 `**{"from": ...}`（与契约字段名逐字一致）。建议
 `implementation` 与新增注释即可回到当前字节。当前没有任何代码/测试依赖这些键，
 回滚不影响其他模块。
 
+## 受理记录
+
+- 2026-11-27 accepted（orchestrator），additive / minor。裁定：
+
+1. `semantics` 全文采纳。`validation_order` 维持「先期间/日期、后账户」，契约已补理由：
+   输入形态错误不依赖数据存在性，也避免无谓调用上游。
+2. `category_breakdown.scope` 只统计 `expense`；契约已补「v1 不提供 income 维度，
+   需要时另开方法或提案」。
+3. `implementation` 采纳为 `module_path: modules/module-b`、
+   `factory: "report:ReportService"`、`bootstrap: sys_path`。实现必须真实落在
+   `modules/module-b/report.py`，并写入按契约字段解析、实例化、断言方法 callable
+   的入口契约测试。
+4. X1 走 **X1-a**：已开 `TASK-MODULE-A-003`，给 A 的契约补顶层 `error_surface`
+   （mechanism=exception、attributes=[code, http_status, retryable]、
+   code_domain=error_codes；异常类名不是契约事实）与
+   `list_entries.semantics.from_parameter`（`**{"from": ...}` 与 `from_` 等价）。
+   **X1-b 被否决**：B 不得依赖 mock 的 `.code`，不得写
+   `getattr(exc, "code", None)` 这类按 mock 猜的代码；A-003 合入前，
+   `ACCOUNT_NOT_FOUND` 透传只留 skip 测试骨架，状态记 blocked。
+5. X2：B 调用上游一律写
+   `list_entries(account_id=..., **{"from": from_, "to": to})`，不依赖 `from_` 别名；
+   等 A-003 把 `from_parameter` 写进契约后再评估别名。
+
 ## 判定与批准
 
-- Orchestrator 判定: **pending**
-- 批准人 / 日期: TBD
+- Orchestrator 判定: **accepted**（2026-11-27）
+- 批准人 / 日期: orchestrator, 2026-11-27
 - 批准后需同步的任务: `TASK-MODULE-B-001`（第二轮实现）；
-  若采纳 X1-a / X2，另开 `worker-module-a` 的契约提案（additive），不阻塞 B 本轮实现
+  `TASK-MODULE-A-003`（A 补 `error_surface` + `from_parameter`，additive）；
+  A-003 合入前 B 的 `READY_FOR_REVIEW` 保持 `no`

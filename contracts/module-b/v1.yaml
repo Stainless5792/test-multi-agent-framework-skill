@@ -20,6 +20,17 @@ methods:
     errors: [ACCOUNT_NOT_FOUND, INVALID_PERIOD]
     idempotent: true
     side_effects: none
+    semantics:
+      period_window: "公历自然月，闭区间 [该月 1 日, 该月最后一天]；from = f'{year:04d}-{month:02d}-01'，to = 该年该月实际最后一天（闰年 2 月为 29 日）；日期粒度，无时区参与"
+      year_month: "year 必须是整数且 1 <= year <= 9999；month 必须是整数且 1 <= month <= 12；越界 → INVALID_PERIOD；非整数、bool、None 或缺省 → ValueError（前置条件违反，与 module-a 的 precondition_violation 同口径）"
+      income: "区间内 kind=income 的 amount 之和，非负整数；无 income 流水时为 0；不做币种换算、不取整"
+      expense: "区间内 kind=expense 的 amount 之和，非负整数；无 expense 流水时为 0"
+      net: "有符号整数：income - expense；可为负，不取绝对值"
+      period_field: "输出 period 为输入年月的 YYYY-MM：年份 4 位零填充、月份 2 位零填充（year=1, month=1 → '0001-01'）"
+      empty_result: "账户存在但区间内无任何流水 → summary 正常返回，income=expense=net=0，period 按输入回填；不返回空对象、不报错"
+      validation_order: "先校验 year/month（类型 → ValueError；范围 → INVALID_PERIOD），再调用上游取数（ACCOUNT_NOT_FOUND）；year/month 非法时即使 account_id 不存在也返回 INVALID_PERIOD 或 ValueError；先校验参数再查数据：输入形态错误不依赖数据存在性，也避免无谓调用上游"
+      error_passthrough: "ACCOUNT_NOT_FOUND 不由 B 预判：仅当上游以 ACCOUNT_NOT_FOUND 失败时，B 以自身错误载体重抛同码（http=404、retryable=false，见 error_codes），message 原样携带但只用于诊断、不作稳定承诺；不向上游消费者暴露上游异常类型；上游其余业务错误码视为上游违约，B 抛 RuntimeError，不新增契约错误码"
+      upstream_call: "只调用 list_entries(account_id, **{'from': from, 'to': to})，from/to 为本节 period_window 的日期；禁止传 limit（会截断汇总）；不用 get_balance（其 as_of 只能表达上界，无法表达月初下界）"
 
   - name: category_breakdown
     kind: request_response
@@ -32,26 +43,42 @@ methods:
     errors: [ACCOUNT_NOT_FOUND, INVALID_DATE_RANGE]
     idempotent: true
     side_effects: none
+    semantics:
+      range: "闭区间：from <= occurred_on <= to，含首尾两天；from == to 合法（单日区间）；与上游 list_entries.semantics.range 一致"
+      date_input: "from / to 只接受 YYYY-MM-DD 严格形态（长度 10、第 5/8 位为 '-'）；紧凑格式 20260101、ISO 周日期 2026-W01-4、datetime、None 或缺省 → ValueError，与上游 list_entries.semantics.date_input 同口径"
+      validation_order: "先校验日期形态（ValueError）与区间方向（from > to → INVALID_DATE_RANGE），再调用上游取数（ACCOUNT_NOT_FOUND）；区间非法时即使 account_id 不存在也返回 INVALID_DATE_RANGE 或 ValueError；先校验参数再查数据：输入形态错误不依赖数据存在性，也避免无谓调用上游"
+      scope: "只统计 kind=expense 的流水；income 不计入，也不产生分类项；金额单位为账户的最小货币单位，不做币种换算；v1 不提供 income 维度，需要时另开方法或提案"
+      grouping: "按上游 Entry.category 原值分组（上游已去首尾空白，B 不再归一化）；空字符串 '' 是合法分组并输出 category: ''；不同分类不合并、不改写、不按大小写折叠"
+      total: "该分类 expense 的 amount 之和，正整数（上游 amount 恒 >= 1）；输出中不存在 total <= 0 的项，因此没有零额分类"
+      order: "按 total 降序；total 相同时按 category 的 Unicode 码点升序（Python 默认字符串比较，不受 locale 影响）；排序稳定"
+      empty_result: "区间内没有 expense 流水（含账户存在但无流水）→ items: []，不报错"
+      error_passthrough: "同 monthly_summary.error_passthrough：ACCOUNT_NOT_FOUND 只由上游触发后透传；上游其余业务错误码视为上游违约，B 抛 RuntimeError"
+      upstream_call: "只调用 list_entries(account_id, **{'from': from, 'to': to})；禁止传 limit（会截断分类合计）"
 
 types:
   MonthlySummary:
     account_id: { type: string, format: uuid }
-    period: { type: string }        # YYYY-MM
-    income: { type: integer }
-    expense: { type: integer }
-    net: { type: integer }
+    period: { type: string }        # YYYY-MM，见 monthly_summary.semantics.period_field
+    income: { type: integer }       # 非负：income amount 绝对值之和
+    expense: { type: integer }      # 非负：expense amount 绝对值之和
+    net: { type: integer }          # 有符号：income - expense
   CategoryTotal:
-    category: { type: string }
-    total: { type: integer }
+    category: { type: string }      # 上游 Entry.category 原值；缺省分组为 ""
+    total: { type: integer }        # 正整数：该分类 expense 绝对值之和
 
 error_codes:
-  ACCOUNT_NOT_FOUND: { http: 404, retryable: false }  # 语义同 module-a，由 A 触发、B 透传
-  INVALID_PERIOD: { http: 400, retryable: false }     # month 不在 1..12 或 year 非法
-  INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to
+  ACCOUNT_NOT_FOUND: { http: 404, retryable: false }  # 由上游 list_entries 触发；B 不预判、重包同码（见 error_passthrough）
+  INVALID_PERIOD: { http: 400, retryable: false }     # year 不在 1..9999 或 month 不在 1..12；非整数/bool/None → ValueError
+  INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to；日期形态非法 → ValueError
 
 versioning:
   strategy: semver_method
   deprecation_window: 1_release
+
+implementation:
+  module_path: modules/module-b   # 相对仓库根
+  factory: "report:ReportService" # <import 名>:<类名>
+  bootstrap: sys_path             # 调用方需把 module_path 加入 sys.path
 
 mocks:
   path: contracts/module-b/mocks/report_service.py
