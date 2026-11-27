@@ -1,0 +1,44 @@
+# 由 /multi-agent-framework 生成。命令来自 .agent/quality-gates.yaml，
+# 不要在 workflow 里另写一套，否则本地与 CI 两套口径必然漂移。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: contract check
+        run: bash scripts/contract-check.sh
+      - name: ownership check
+        run: bash scripts/ownership-check.sh "origin/${{ github.base_ref || 'main' }}" HEAD
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/integration-check.sh --only format,lint,typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/integration-check.sh --only unit
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [contract, lint, test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: bash scripts/integration-check.sh

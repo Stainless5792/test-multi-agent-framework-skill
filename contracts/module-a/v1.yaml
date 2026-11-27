@@ -1,0 +1,99 @@
+# 记账 API —— 账目域契约。字段与语义变更走 contracts/module-a/proposals/。
+contract:
+  name: LedgerService
+  module: module-a
+  version: v1
+  status: approved
+  owner: worker-module-a
+  consumers: [worker-module-b]   # module-b 的报表通过本契约取数
+  stability: stable
+
+methods:
+  - name: create_account
+    kind: request_response
+    input:
+      name: { type: string, required: true }
+      currency: { type: string, required: true, format: iso4217 }
+    output:
+      account: { type: object, required: true, ref: Account }
+    errors: [INVALID_CURRENCY, DUPLICATE_ACCOUNT_NAME]
+    idempotent: false
+    side_effects: creates_account
+
+  - name: record_entry
+    kind: request_response
+    # amount 为最小货币单位正整数（如分），不支持小数金额
+    input:
+      account_id: { type: string, required: true, format: uuid }
+      amount: { type: integer, required: true }
+      kind: { type: string, required: true, enum: [income, expense] }
+      occurred_on: { type: string, required: true, format: date }
+      category: { type: string, required: false }
+      memo: { type: string, required: false }
+    output:
+      entry: { type: object, required: true, ref: Entry }
+    errors: [ACCOUNT_NOT_FOUND, INVALID_AMOUNT, INVALID_CATEGORY]
+    idempotent: false
+    side_effects: creates_entry
+
+  - name: get_balance
+    kind: request_response
+    input:
+      account_id: { type: string, required: true, format: uuid }
+      as_of: { type: string, required: false, format: date }
+    output:
+      balance: { type: object, required: true, ref: Balance }
+    errors: [ACCOUNT_NOT_FOUND]
+    idempotent: true
+    side_effects: none
+
+  - name: list_entries
+    kind: request_response
+    input:
+      account_id: { type: string, required: true, format: uuid }
+      from: { type: string, required: false, format: date }
+      to: { type: string, required: false, format: date }
+      limit: { type: integer, required: false }
+    output:
+      entries: { type: array, required: true, ref: Entry }
+    errors: [ACCOUNT_NOT_FOUND, INVALID_DATE_RANGE]
+    idempotent: true
+    side_effects: none
+
+types:
+  Account:
+    id: { type: string, format: uuid }
+    name: { type: string }
+    currency: { type: string }
+    created_at: { type: string, format: date-time }
+  Entry:
+    id: { type: string, format: uuid }
+    account_id: { type: string, format: uuid }
+    amount: { type: integer }
+    kind: { type: string, enum: [income, expense] }
+    occurred_on: { type: string, format: date }
+    category: { type: string }
+    memo: { type: string }
+    created_at: { type: string, format: date-time }
+  Balance:
+    account_id: { type: string, format: uuid }
+    currency: { type: string }
+    amount: { type: integer }   # 有符号：income - expense
+
+error_codes:
+  INVALID_CURRENCY: { http: 400, retryable: false }
+  DUPLICATE_ACCOUNT_NAME: { http: 409, retryable: false }
+  ACCOUNT_NOT_FOUND: { http: 404, retryable: false }
+  INVALID_AMOUNT: { http: 400, retryable: false }     # <= 0 或非整数
+  INVALID_CATEGORY: { http: 400, retryable: false }
+  INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to
+
+versioning:
+  strategy: semver_method
+  deprecation_window: 1_release
+
+mocks:
+  path: contracts/module-a/mocks/ledger_service.py
+
+contract_tests:
+  command: uv run pytest tests/contracts/module-a

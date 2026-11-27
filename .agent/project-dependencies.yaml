@@ -1,0 +1,34 @@
+# 模块依赖图。并行度的唯一依据：谁的接口稳定，谁就能同时开工。
+# 按业务域切分，不按 api/models/services 层切分。
+version: "1.0"
+
+shared:
+  # 共享代码只有一个所有者，Worker 只读。
+  - id: shared
+    owner: orchestrator
+    paths: [shared/**]
+    desc: 数据库连接、异常、日志、安全等横切能力
+
+modules:
+  - id: module-a
+    owner: worker-module-a
+    paths: [modules/module-a/**]
+    deps: [shared]
+    publishes: [contracts/module-a/v1.yaml]
+    consumes: []
+  - id: module-b
+    owner: worker-module-b
+    paths: [modules/module-b/**]
+    deps: [shared, module-a]                 # B 运行时调 A
+    publishes: [contracts/module-b/v1.yaml]
+    consumes: [contracts/module-a/v1.yaml]   # 只读契约 + mock，不读 A 源码
+
+# 冲突高发资产，必须单一所有者
+exclusive:
+  - { path: "requirements*.txt", owner: orchestrator }
+  - { path: "pyproject.toml", owner: orchestrator }
+  - { path: "package.json", owner: orchestrator }
+  - { path: "*.lock", owner: orchestrator }
+  - { path: ".github/workflows/**", owner: orchestrator }
+  - { path: ".gitlab-ci.yml", owner: orchestrator }
+  - { path: "migrations/**", owner: orchestrator }

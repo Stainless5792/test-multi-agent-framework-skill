@@ -1,0 +1,40 @@
+# 由 /multi-agent-framework 生成。命令全部来自 .agent/quality-gates.yaml，
+# 不要在 CI 里另写一套，否则本地与 CI 两套口径必然漂移。
+stages:
+  - contract
+  - lint
+  - test
+  - integration
+
+variables:
+  MAF_STRICT: "1"
+
+contract:
+  stage: contract
+  script:
+    - bash scripts/contract-check.sh
+    - bash scripts/ownership-check.sh "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+lint:
+  stage: lint
+  script:
+    - bash scripts/integration-check.sh --only format,lint,typecheck
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+test:
+  stage: test
+  script:
+    - bash scripts/integration-check.sh --only unit
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+integration:
+  stage: integration
+  script:
+    - bash scripts/integration-check.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: false

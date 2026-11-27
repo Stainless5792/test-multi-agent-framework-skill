@@ -1,0 +1,28 @@
+# 本地 Worker 执行配置。同一台机器上每个 Worker 一个 worktree，共享一个 .git 对象库。
+profile_id: local-default
+mode: local
+host: local-machine
+
+workspace:
+  strategy: worktree
+  root: ../worktrees/<worker-id>
+
+git:
+  provider: TBD            # github | gitlab
+  repository: TBD
+  base_branch: main
+  branch_pattern: feature/<module>-<task-id>
+  push_policy: own_branch_only
+
+launch:
+  headless: "opencode run -w <worker-id> --agent <worker-id> --title <task-id> \"<packet>\""
+  tui: "cd ../worktrees/<worker-id> && opencode"
+  notes: "TUI 里新 tab 继承当前目录；agent 是会话级属性，切 tab 后要确认状态栏"
+
+isolation:
+  database: isolated_schema_or_container
+  ports: distinct_per_worker
+  env_file: local_only
+secrets:
+  source: local-env-or-keychain
+  never: prompt, repo, logs

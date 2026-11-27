@@ -1,0 +1,55 @@
+# 质量门禁。命令必须能溯源到 manifest script / Makefile / CI step，找不到写 TBD。
+# 硬规则：仍为 TBD 的门禁等于 BLOCKED；validate --strict 会判失败。
+version: "1.0"
+blocked_if_tbd: true
+
+gates:
+  - id: contract
+    stage: pre-review
+    required: true
+    command: bash scripts/contract-check.sh
+    evidence: "契约 schema 通过 + 契约测试通过 + 无未批准的 breaking 变更"
+
+  - id: ownership
+    stage: pre-review
+    required: true
+    command: bash scripts/ownership-check.sh origin/main HEAD
+    evidence: "git diff 中的文件全部落在允许路径内"
+
+  - id: format
+    stage: pre-commit
+    required: true
+    command: uv run ruff format --check .
+    evidence: "exit_code == 0（溯源：pyproject.toml [tool.ruff]）"
+
+  - id: lint
+    stage: pre-review
+    required: true
+    command: uv run ruff check .
+    evidence: "0 errors（溯源：pyproject.toml [tool.ruff.lint]）"
+
+  - id: typecheck
+    stage: pre-review
+    required: true
+    command: uv run mypy .
+    evidence: "exit_code == 0（溯源：pyproject.toml [tool.mypy]）"
+
+  - id: unit
+    stage: pre-review
+    required: true
+    command: uv run pytest
+    evidence: "全部通过 + exit_code == 0（溯源：pyproject.toml [tool.pytest.ini_options]）"
+
+  - id: integration
+    stage: pre-merge
+    required: true
+    # 注意：不要填 `bash scripts/integration-check.sh`。该脚本本身就是按本表跑门禁的
+    # runner，填进来会自我递归。等有真实跨模块用例后填具体命令（例：pytest tests/integration -q）。
+    command: TBD
+    evidence: "跨模块用例通过 + 证据表完整"
+
+  - id: security
+    stage: pre-merge
+    required: true
+    command: TBD          # 无 CI step / 扫描配置可溯源
+    evidence: "0 未接受的高危漏洞"

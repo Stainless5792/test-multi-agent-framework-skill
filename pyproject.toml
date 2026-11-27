@@ -1,0 +1,28 @@
+[project]
+name = "test-multi-agent-framework"
+version = "0.1.0"
+description = "Multi-agent framework scaffold project"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+include = ["*.py", "*.pyi"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+exclude = ["^\\.venv/", "^build/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

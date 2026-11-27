@@ -1,0 +1,32 @@
+# 项目事实源。只填能确认的值，无法确认一律写 TBD。
+# 读取顺序：bootstrap 生成 → 人工确认 → 任何 Agent 只读不改。
+version: "1.0"
+
+project:
+  name: test-multi-agent-framework
+  lifecycle: greenfield # greenfield | brownfield
+  type: backend # backend | frontend | fullstack | library | data | infra
+  default_branch: main
+  integration_strategy: pr_to_main # pr_to_main（已定）| develop_then_main
+
+stack:
+  languages: [python]  # 用户指定，来源：2026-11-27 对话
+  runtime: "python >=3.11"  # 来源：pyproject.toml requires-python
+  package_manager: uv       # 来源：2026-11-27 对话
+  adapters: []         # skill 的 assets/stacks 缺失，无适配器可用
+
+commands:
+  install: uv sync
+  format: uv run ruff format --check .
+  lint: uv run ruff check .
+  typecheck: uv run mypy .
+  unit: uv run pytest
+  contract: bash scripts/contract-check.sh
+  integration: TBD     # runner 不是门禁命令；待真实跨模块用例，见 quality-gates.yaml 注释
+  build: TBD
+
+facts:
+  # 只写已核实的结论，每条后面注明来源（文件路径或命令）
+  - key: service_entry
+    value: TBD
+    source: TBD

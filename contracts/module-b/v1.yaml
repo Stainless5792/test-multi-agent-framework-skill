@@ -1,0 +1,60 @@
+# 记账 API —— 报表域契约。取数只走 module-a 的契约，不读其源码。
+contract:
+  name: ReportService
+  module: module-b
+  version: v1
+  status: approved
+  owner: worker-module-b
+  consumers: []            # 对外接口，暂无内部消费者
+  stability: stable
+
+methods:
+  - name: monthly_summary
+    kind: request_response
+    input:
+      account_id: { type: string, required: true, format: uuid }
+      year: { type: integer, required: true }
+      month: { type: integer, required: true }
+    output:
+      summary: { type: object, required: true, ref: MonthlySummary }
+    errors: [ACCOUNT_NOT_FOUND, INVALID_PERIOD]
+    idempotent: true
+    side_effects: none
+
+  - name: category_breakdown
+    kind: request_response
+    input:
+      account_id: { type: string, required: true, format: uuid }
+      from: { type: string, required: true, format: date }
+      to: { type: string, required: true, format: date }
+    output:
+      items: { type: array, required: true, ref: CategoryTotal }
+    errors: [ACCOUNT_NOT_FOUND, INVALID_DATE_RANGE]
+    idempotent: true
+    side_effects: none
+
+types:
+  MonthlySummary:
+    account_id: { type: string, format: uuid }
+    period: { type: string }        # YYYY-MM
+    income: { type: integer }
+    expense: { type: integer }
+    net: { type: integer }
+  CategoryTotal:
+    category: { type: string }
+    total: { type: integer }
+
+error_codes:
+  ACCOUNT_NOT_FOUND: { http: 404, retryable: false }  # 语义同 module-a，由 A 触发、B 透传
+  INVALID_PERIOD: { http: 400, retryable: false }     # month 不在 1..12 或 year 非法
+  INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to
+
+versioning:
+  strategy: semver_method
+  deprecation_window: 1_release
+
+mocks:
+  path: contracts/module-b/mocks/report_service.py
+
+contract_tests:
+  command: uv run pytest tests/contracts/module-b

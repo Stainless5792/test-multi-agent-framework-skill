@@ -1,0 +1,85 @@
+# 任务 DAG。调度只认这里：状态不是 ready 的任务不派发，deps 未完成的不派发。
+version: "1.0"
+sprint: sprint-01
+
+tasks:
+  - id: TASK-000
+    title: "确认模块边界与契约基线"
+    module: shared
+    owner: orchestrator
+    state: done
+    deps: []
+    contracts: []
+    allowed_paths: [contracts/**, docs/architecture/**, .agent/**]
+    forbidden_paths: [modules/**, shared/**]
+    acceptance:
+      - 每个模块有一份 status=approved 的契约
+      - file-ownership.md 无重叠路径
+    verify_cmds:
+      - bash scripts/contract-check.sh --dag
+    deliverables: [contracts, ownership, dag]
+    mock: { needed: false, path: null }
+    blocked_by: null
+
+  - id: TASK-MODULE-A-001
+    title: "module-a 账目域首个可交付切片（账户 / 流水 / 余额）"
+    module: module-a
+    owner: worker-module-a
+    state: ready
+    deps: [TASK-000]
+    contracts: [contracts/module-a/v1.yaml]
+    allowed_paths:
+      - modules/module-a/**
+      - tests/modules/module-a/**
+      - tests/contracts/module-a/**
+      - contracts/module-a/**
+    forbidden_paths:
+      - shared/**
+      - modules/module-b/**
+      - contracts/module-b/**
+      - scripts/**
+      - .agent/**
+    acceptance:
+      - create_account / record_entry / get_balance / list_entries 四个方法可被调用
+      - 契约声明的 6 个错误码各命中一次（INVALID_CURRENCY, DUPLICATE_ACCOUNT_NAME, ACCOUNT_NOT_FOUND, INVALID_AMOUNT, INVALID_CATEGORY, INVALID_DATE_RANGE）
+      - 余额等于 income 合计减 expense 合计
+      - 提供 contracts/module-a/mocks/ledger_service.py，供 module-b 并行开发
+    verify_cmds:
+      - uv run pytest tests/modules/module-a tests/contracts/module-a
+      - uv run ruff check modules/module-a tests/modules/module-a tests/contracts/module-a
+      - uv run mypy modules/module-a
+    deliverables: [branch, report, contract_deltas]
+    mock: { needed: false, path: null }
+    blocked_by: null
+
+  - id: TASK-MODULE-B-001
+    title: "module-b 报表域首个可交付切片（月度汇总 / 分类统计）"
+    module: module-b
+    owner: worker-module-b
+    state: backlog
+    deps: [TASK-000]
+    contracts: [contracts/module-b/v1.yaml]
+    allowed_paths:
+      - modules/module-b/**
+      - tests/modules/module-b/**
+      - tests/contracts/module-b/**
+      - contracts/module-b/**
+    forbidden_paths:
+      - shared/**
+      - modules/module-a/**
+      - contracts/module-a/**
+      - tests/modules/module-a/**
+      - tests/contracts/module-a/**
+      - scripts/**
+      - .agent/**
+    acceptance:
+      - monthly_summary / category_breakdown 两个方法可被调用
+      - 契约声明的错误码各命中一次（ACCOUNT_NOT_FOUND, INVALID_PERIOD, INVALID_DATE_RANGE）
+      - 取数只走 contracts/module-a/v1.yaml 声明的方法
+    verify_cmds:
+      - uv run pytest tests/modules/module-b tests/contracts/module-b
+      - uv run ruff check modules/module-b tests/modules/module-b tests/contracts/module-b
+      - uv run mypy modules/module-b
+    deliverables: [branch, report, contract_deltas]
+    mock: { needed: true, path: contracts/module-a/mocks/ledger_service.py }
+    blocked_by: null

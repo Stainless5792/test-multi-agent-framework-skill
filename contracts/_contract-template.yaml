@@ -1,0 +1,33 @@
+# 契约模板。复制为 contracts/<module>/v1.yaml 后逐项填实。
+# status 改为 approved 之前，该模块不得进入实现阶段。
+contract:
+  name: <ModuleService>
+  module: <module-id>
+  version: v1
+  status: draft            # draft | approved | deprecated
+  owner: <worker-id>
+  consumers: []            # 谁依赖这份契约，改之前必须通知
+  stability: stable
+
+methods:
+  - name: <method_name>
+    kind: request_response # request_response | event | stream
+    input: {}
+    output: {}
+    errors: []
+    idempotent: true
+    side_effects: none
+
+types: {}
+
+error_codes: {}
+
+versioning:
+  strategy: semver_method
+  deprecation_window: 1_release
+
+mocks:
+  path: contracts/<module>/mocks/
+
+contract_tests:
+  command: TBD
