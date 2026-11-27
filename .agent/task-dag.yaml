@@ -90,7 +90,7 @@ tasks:
     title: "module-a 契约补 error_surface 与 from 调用形态"
     module: module-a
     owner: worker-module-a
-    state: ready
+    state: review
     deps: [TASK-MODULE-A-001]
     contracts: [contracts/module-a/v1.yaml]
     allowed_paths:
