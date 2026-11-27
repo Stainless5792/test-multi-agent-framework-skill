@@ -72,15 +72,14 @@ add("分支领先 base", ahead > 0, f"{ahead} 个提交")
 add("工作区干净", worktree and not dirty, "有未提交改动" if dirty else "")
 
 owner = t.get("owner", "")
+delivery_rel = "docs/reviews/deliveries/%s/%s-delivery.md" % (owner, task_id)
 delivery_path = ""
-delivery_note = "docs/reviews/deliveries/%s/%s-delivery.md" % (owner, task_id)
+# 交付报告在 worker 的 worktree 里，合并前还没进主仓库。先查 worktree，主仓库只作回退。
 for root in ([worktree] if worktree else []) + ["."]:
-    for cand in (f"docs/reviews/deliveries/{owner}/{task_id}-delivery.md",
-                 f"docs/reviews/{task_id}-delivery.md"):
+    for cand in (delivery_rel, "docs/reviews/%s-delivery.md" % task_id):
         p2 = os.path.join(root, cand)
         if os.path.exists(p2):
-            delivery_path = p2
-            delivery_note = cand
+            delivery_path, delivery_rel = p2, cand
             break
     if delivery_path:
         break
@@ -88,23 +87,24 @@ ready_flag = False
 if delivery_path:
     s = open(delivery_path, encoding="utf-8").read()
     ready_flag = "VERIFY" in s and "READY_FOR_REVIEW: YES" in s.upper()
-add("交付报告", bool(delivery_path) and ready_flag, delivery_note)
+add("交付报告", bool(delivery_path) and ready_flag, delivery_rel)
 
-SCRIPT_DIR = os.path.abspath("scripts")  # merge-ready 本身从仓库根运行
+SCRIPT_DIR = os.path.abspath("scripts")
 
 def run_script(name, args):
     if not worktree:
         return False, "没有 worktree"
-    # 用编排者这份门禁脚本跑 worktree 的数据：worker 分支里的 scripts/ 可能是旧版
+    # 用编排者这份脚本 + --project 指向 worktree：worker 分支里的 scripts/ 是切分支时的旧版，
+    # 拿它跑门禁会让每个分支执行不同版本的规则。
     r = subprocess.run(["bash", os.path.join(SCRIPT_DIR, name), *args, "--project", worktree],
                        capture_output=True, text=True, cwd=worktree)
     lines = [l for l in (r.stdout or r.stderr).strip().splitlines() if l.strip()]
     return r.returncode == 0, (lines[-1] if lines else "")
 
 if worktree:
-    # base 可能在开工后前移；用 merge-base 比较，避免把 base 的新提交算成「分支删除」
-    ok, mb = git("-C", worktree, "merge-base", base, "HEAD")
-    diff_base = mb if ok and mb else base
+    # base 可能在开工后前移：越界与契约兼容都只该看「分支自己改了什么」。
+    ok_mb, mb = git("-C", worktree, "merge-base", base, "HEAD")
+    diff_base = mb if ok_mb and mb else base
     ok5, n5 = run_script("ownership-check.sh", [diff_base, "HEAD", "--owner", t.get("owner", "")])
     add("所有权", ok5, n5)
     ok6, n6 = run_script("contract-check.sh", ["--base", diff_base])

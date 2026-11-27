@@ -36,8 +36,8 @@ git rev-parse --git-dir >/dev/null 2>&1 || { printf '错误: 不是 git 仓库\n
 git rev-parse --verify -q "$BASE" >/dev/null 2>&1 || BASE="HEAD"
 [ -n "$HEAD" ] || HEAD="HEAD"
 
-# 用 merge-base 比较：base 在开工后前移时，两点差异会把 base 的新提交算成本分支的删除。
-# 越界是「分支自己改了什么」，不是「主线和分支的树差多少」。
+# 用 merge-base 比较：base 在开工后前移时，两点树差会把 base 的新提交算成本分支的删除。
+# 越界问的是「这个分支自己改了什么」，不是「主线和分支现在的树差多少」。
 MB=$(git merge-base "$BASE" "$HEAD" 2>/dev/null || true)
 [ -n "$MB" ] && BASE="$MB"
 

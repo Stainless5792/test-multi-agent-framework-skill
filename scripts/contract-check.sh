@@ -201,6 +201,60 @@ if do_gen:
             f.write("\n".join(lines))
         notes.append(f"生成 {out}")
 
+# 8. 可选扩展字段：字段存在才校验，老契约不受影响
+def check_implementation(p, d, status):
+    impl = d.get("implementation")
+    if impl is None:
+        return
+    if not isinstance(impl, dict):
+        fails.append(f"{p}: implementation 必须是映射")
+        return
+    mp = impl.get("module_path")
+    if not mp:
+        fails.append(f"{p}: implementation 缺 module_path")
+    elif not os.path.isdir(mp):
+        (fails if status == "approved" else warns).append(
+            f"{p}: implementation.module_path 不存在: {mp}")
+    fac = impl.get("factory")
+    if not fac or ":" not in str(fac):
+        fails.append(f"{p}: implementation.factory 必须写成 <import 名>:<类名>")
+    if impl.get("bootstrap") not in ("package", "sys_path"):
+        fails.append(f"{p}: implementation.bootstrap 只能是 package 或 sys_path")
+    req = impl.get("requires")
+    if req is None:
+        return
+    if not isinstance(req, list):
+        fails.append(f"{p}: implementation.requires 必须是列表")
+        return
+    for r in req:
+        if not isinstance(r, dict) or not r.get("name"):
+            fails.append(f"{p}: implementation.requires 的每一项都要有 name")
+            continue
+        src = r.get("from")
+        if src and not os.path.exists(src):
+            fails.append(f"{p}: implementation.requires.{r['name']} 指向不存在的契约 {src}")
+
+def check_error_surface(p, d):
+    es = d.get("error_surface")
+    if es is None:
+        return
+    if not isinstance(es, dict):
+        fails.append(f"{p}: error_surface 必须是映射")
+        return
+    if es.get("mechanism") not in ("exception", "return_value"):
+        fails.append(f"{p}: error_surface.mechanism 只能是 exception 或 return_value")
+    attrs = es.get("attributes")
+    if not isinstance(attrs, list) or not attrs:
+        fails.append(f"{p}: error_surface.attributes 必须是非空列表")
+    dom = es.get("code_domain")
+    if dom and dom not in d:
+        fails.append(f"{p}: error_surface.code_domain 指向契约内不存在的表 {dom}")
+
+for p in paths:
+    d = load(p)
+    check_implementation(p, d, (d.get("contract") or {}).get("status"))
+    check_error_surface(p, d)
+
 for n in notes: print("note  " + n)
 for w in warns: print("WARN  " + w)
 for f in fails: print("FAIL  " + f)

@@ -49,20 +49,21 @@ error_codes:                   # 错误必须可枚举，禁止裸字符串
   USER_NOT_FOUND: { http: 404, retryable: false }
   INVALID_USER_ID: { http: 400, retryable: false }
 
-error_surface:                 # 错误怎么交到调用方；没有这条，消费者只能猜异常类名
-  mechanism: exception         # exception（抛异常） | return_value（返回值编码）
-  attributes: [code, http_status, retryable]   # 异常/返回值必须暴露的属性名
-  code_domain: error_codes     # code 的取值域就是上面那张表，不得新增码
-  notes: "异常类名不是契约事实，消费者不得依赖类型名或继承关系"
-
 versioning:
   strategy: semver_method       # 新增可选字段=minor，删字段/改类型/改语义=major
   deprecation_window: 1_release
 
-implementation:                 # 下游怎么拿到实现；没有它，mock 删掉后下游无契约级入口
-  module_path: modules/user      # 相对仓库根
-  factory: "ledger:UserService"  # <import 名>:<类名>，禁止下游猜模块名
-  bootstrap: sys_path            # package | sys_path；package 表示 module_path 可常规 import
+# 以下两块是可选的。一旦有下游消费者就应补齐，否则下游只能靠读上游源码接。
+implementation:                # 下游怎么拿到实现
+  module_path: modules/user    # 相对仓库根
+  factory: "ledger:UserService"  # <import 名>:<类名>
+  bootstrap: sys_path          # package | sys_path
+  requires: []                 # 构造需要哪些上游实例，见「实现入口」
+
+error_surface:                 # 业务失败怎么交到调用方
+  mechanism: exception         # exception | return_value
+  attributes: [code, http_status, retryable]
+  code_domain: error_codes
 
 mocks:
   path: contracts/user/mocks/user_service.py
@@ -71,17 +72,30 @@ contract_tests:
   command: pytest tests/contracts/test_user_contract.py -q
 ```
 
+## 版本与兼容
+
+| 变更 | 版本 | 是否阻塞下游 |
+|---|---|---|
+| 新增可选字段 / 新增方法 | minor | 否，通知即可 |
+| 新增必填字段 | major | 是 |
+| 删除字段 / 改类型 / 改枚举值 / 改语义 | major | 是，保留旧版本一个窗口 |
+| 改错误码含义 | major | 是 |
+| 新增 `implementation` / `error_surface` | minor | 否，通知消费者 |
+| 改 `implementation.factory`、`bootstrap` 或 `error_surface.mechanism` | major | 是，下游代码会失效 |
+| 只改注释、文档 | patch | 否 |
+
 ## 实现入口（`implementation`）
 
 `implementation` 是可选块，但**一旦有下游消费者就应补齐**：它把「怎么实例化服务」从模块内部
 布局（目录名、`sys.path` 技巧、README 说明）挪进契约，下游不再需要读上游源码。
 
-- `factory` 必须写成 `<import 名>:<类名>`；契约测试要按该字段解析、实例化，并断言契约声明的方法都存在。
-  入口失效时门禁直接失败，不靠人肉检查。
+- `module_path` 是相对仓库根的可 import 路径。`status: approved` 时它必须真实存在，
+  `contract-check` 会检查；`draft` 阶段只告警。
+- `factory` 必须写成 `<import 名>:<类名>`；契约测试要按该字段解析、实例化，并断言契约声明的
+  方法都存在。格式不合法时门禁直接失败。
 - `bootstrap: sys_path` 表示调用方需把 `module_path` 加入 `sys.path`，属**临时形态**；
   `bootstrap: package` 是目标态（`module_path` 是常规包路径，直接 `import`）。
   从 `sys_path` 迁到 `package` 只改字段值，对下游是一次 import 变更。
-- 改 `implementation` 的字段值会让下游代码失效，按「改语义」处理（major，或至少提前通知消费者）。
 - `requires` 声明「构造这个服务需要哪些上游实例、从哪份契约取」：
 
   ```yaml
@@ -90,13 +104,14 @@ contract_tests:
     factory: "report:ReportService"
     bootstrap: sys_path
     requires:
-      - name: ledger                        # 构造参数名
-        from: contracts/ledger/v1.yaml      # 上游契约，按它的 implementation 字段解析
+      - name: ledger                    # 构造参数名
+        from: contracts/ledger/v1.yaml  # 上游契约，按它的 implementation 解析
         description: "构造时注入的上游实例"
   ```
 
-  `requires` 只是**声明**，不是加载器：消费者仍要自己按上游契约的 `implementation` 解析出实例，
-  再按 `name` 注入。没有 `requires` 时视为无参构造；`from` 指向的契约不存在，契约测试应失败。
+  `requires` 只是**声明**，不是加载器：消费者仍要按上游契约的 `implementation` 解析出实例，
+  再按 `name` 注入。没有 `requires` 时视为无参构造；`from` 指向的契约不存在时门禁失败。
+  `from` 与 `.agent/project-dependencies.yaml` 的 `consumes` 冲突时，以契约为准，并同步修正依赖表。
 
 ## 错误面（`error_surface`）
 
@@ -110,17 +125,8 @@ contract_tests:
 - **异常类名不是契约事实**：消费者不得 `isinstance` 或按类名 `except`，只按属性与取值判断。
 - 前置条件违反（类型/格式/必填值缺失）通常抛 `ValueError`，**不进** `error_codes`，也不受
   `error_surface` 约束；契约应在对应方法的 `semantics` 里写明，避免被读成「所有异常都带 code」。
-
-## 版本与兼容
-
-| 变更 | 版本 | 是否阻塞下游 |
-|---|---|---|
-| 新增可选字段 / 新增方法 | minor | 否，通知即可 |
-| 新增必填字段 | major | 是 |
-| 删除字段 / 改类型 / 改枚举值 / 改语义 | major | 是，保留旧版本一个窗口 |
-| 改错误码含义 | major | 是 |
-| 只改注释、文档 | patch | 否 |
-| 新增/改 `implementation` 字段值 | minor / major | 新增加 minor；改值算改语义 |
+- 结构校验（`mechanism` 枚举、`attributes` 非空、`code_domain` 指向存在的表）由
+  `contract-check` 执行，只在字段存在时检查，老契约不受影响。
 
 ## 类型单一来源
 
@@ -131,9 +137,7 @@ contract_tests:
 
 一份契约至少三个测试：
 
-1. **结构**：必填字段齐全、方法与错误码互相引用一致。**现状**：由 `scripts/contract-check.sh`
-   做，`contracts/_schema.json` 尚未提供，等补 schema 后才有多余的结构校验；在那之前
-   `contract-check` 的覆盖范围就是它的实现，不要声称「schema 已校验」。
+1. **结构**：`contracts/<module>/v1.yaml` 通过 `contracts/_schema.json` 校验，必填字段齐全。
 2. **实现**：模块的真实入口暴露了契约声明的每个方法，参数名与必填性与契约一致。
 3. **行为**：契约声明的每个 `error_codes` 键都能被触发一次（用最小可复现场景），且返回码与契约一致。
 
