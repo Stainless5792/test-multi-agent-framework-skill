@@ -72,3 +72,13 @@ entries = service.list_entries(account_id=account["id"], **{"from": "2026-01-01"
 
 `worker-module-b` 并行开发时使用 `contracts/module-a/mocks/ledger_service.py`，
 它与本文件的公开面、字段和错误码一致，可独立加载。真实实现接入后按协议删除 Mock。
+
+## 契约留白与待受理提案
+
+契约尚未声明的实现入口与可观察语义已按协议提为提案：
+
+- `contracts/module-a/proposals/20261127-entrypoint.md`（实现入口，评审 F1）
+- `contracts/module-a/proposals/20261127-semantics.md`（排序 / 区间 / 缺省值 /
+  前置条件，评审 F2、F7）
+
+受理前以上文「契约未定义、由本实现补齐的规则」为准；受理后以契约为准。
