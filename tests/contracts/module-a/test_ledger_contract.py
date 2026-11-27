@@ -288,6 +288,7 @@ def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> Non
         "order",
         "limit",
         "date_input",
+        "from_parameter",
     }
 
 
@@ -370,3 +371,55 @@ def test_create_account_rejects_retired_currency(ledger: ModuleType, currency: s
         service.create_account(name="Cash", currency=currency)
 
     assert excinfo.value.code == "INVALID_CURRENCY"
+
+
+# 提案 20261127-error-surface.md（预批）：业务失败的交付形态由契约声明，
+# 消费者只依赖 attributes 与 code_domain，不依赖异常类名。
+def test_contract_declares_error_surface(contract: dict) -> None:
+    surface = contract["error_surface"]
+
+    assert surface["mechanism"] == "exception"
+    assert set(surface["attributes"]) == {"code", "http_status", "retryable"}
+    assert surface["code_domain"] == "error_codes"
+    assert surface["code_domain"] in contract, "code_domain 必须指向契约内已声明的表"
+
+
+def test_business_error_exposes_contract_attributes(contract: dict, ledger: ModuleType) -> None:
+    surface = contract["error_surface"]
+    code_domain = set(contract[surface["code_domain"]])
+
+    service = ledger.LedgerService()
+    try:
+        service.get_balance(account_id=str(uuid.uuid4()))
+    except Exception as exc:  # 刻意不按类名/继承关系捕获，只依赖契约属性
+        carrier: Any = exc  # Any 是为了不把断言绑到某个异常类型上
+        for attribute in surface["attributes"]:
+            assert hasattr(carrier, attribute), f"业务异常缺少契约属性 {attribute}"
+        code = carrier.code
+        assert code in code_domain, f"异常 code 不在契约取值域内: {code!r}"
+        spec = contract[surface["code_domain"]][code]
+        assert carrier.http_status == spec["http"]
+        assert carrier.retryable is spec["retryable"]
+    else:
+        pytest.fail("get_balance 对未知账户未抛异常，与 error_surface.mechanism=exception 不符")
+
+
+# 提案 20261127-error-surface.md（预批）：`from` 的两种调用形态必须行为一致。
+def test_list_entries_from_keyword_and_alias_are_equivalent(
+    contract: dict, ledger: ModuleType
+) -> None:
+    methods = {method["name"]: method for method in _methods(contract)}
+    assert "from_parameter" in methods["list_entries"]["semantics"]
+
+    service = ledger.LedgerService()
+    account = service.create_account(name="Cash", currency="USD")["account"]
+    for day in ("2026-01-01", "2026-01-02", "2026-01-03"):
+        service.record_entry(account_id=account["id"], amount=1, kind="income", occurred_on=day)
+
+    via_keyword = service.list_entries(account_id=account["id"], **{"from": "2026-01-02"})[
+        "entries"
+    ]
+    via_alias = service.list_entries(account_id=account["id"], from_="2026-01-02")["entries"]
+
+    assert [entry["occurred_on"] for entry in via_keyword] == ["2026-01-02", "2026-01-03"]
+    assert via_keyword == via_alias
