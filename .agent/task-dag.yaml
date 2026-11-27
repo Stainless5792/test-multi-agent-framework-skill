@@ -86,6 +86,42 @@ tasks:
     mock: { needed: false, path: null }
     blocked_by: "触发条件：module-a 出现第二个实现文件，或 module-b 集成测试落地前；届时 orchestrator 先加 modules/module_a/** 所有权与 allowed_paths"
 
+  - id: TASK-MODULE-A-003
+    title: "module-a 契约补 error_surface 与 from 调用形态"
+    module: module-a
+    owner: worker-module-a
+    state: ready
+    deps: [TASK-MODULE-A-001]
+    contracts: [contracts/module-a/v1.yaml]
+    allowed_paths:
+      - modules/module-a/**
+      - tests/modules/module-a/**
+      - tests/contracts/module-a/**
+      - contracts/module-a/**
+    forbidden_paths:
+      - shared/**
+      - modules/module-b/**
+      - contracts/module-b/**
+      - tests/modules/module-b/**
+      - tests/contracts/module-b/**
+      - scripts/**
+      - .agent/**
+      - pyproject.toml
+    acceptance:
+      - 契约声明业务错误载体：异常暴露 code / http_status / retryable，code 取值域为 error_codes 的键，异常类名不是契约事实
+      - 契约声明 from 关键字参数的调用形态（list_entries(**{"from": ...}) 与 from_ 别名等价）
+      - 契约测试锁死上述两条，删掉任一实现即变红
+    verify_cmds:
+      - uv run pytest tests/contracts/module-a tests/modules/module-a
+      - uv run ruff check .
+      - uv run mypy .
+      - bash scripts/contract-check.sh --base origin/main
+      - bash scripts/ownership-check.sh origin/main HEAD --owner worker-module-a
+    deliverables: [branch, report, contract_deltas]
+    mock: { needed: false, path: null }
+    blocked_by: null
+    note: "来源：TASK-MODULE-B-001 提案 X1/X2 —— B 要透传 ACCOUNT_NOT_FOUND 必须能从契约读到错误码载体；orchestrator 已预批形态，A 一轮落地。"
+
   - id: TASK-MODULE-B-001
     title: "module-b 报表域首个可交付切片（月度汇总 / 分类统计）"
     module: module-b
