@@ -71,6 +71,12 @@ error_codes:
   INVALID_PERIOD: { http: 400, retryable: false }     # year 不在 1..9999 或 month 不在 1..12；非整数/bool/None → ValueError
   INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to；日期形态非法 → ValueError
 
+error_surface:
+  mechanism: exception
+  attributes: [code, http_status, retryable]
+  code_domain: error_codes
+  notes: "异常类名不是契约事实，消费者不得依赖类型名或继承关系"
+
 versioning:
   strategy: semver_method
   deprecation_window: 1_release
@@ -79,9 +85,10 @@ implementation:
   module_path: modules/module-b   # 相对仓库根
   factory: "report:ReportService" # <import 名>:<类名>
   bootstrap: sys_path             # 调用方需把 module_path 加入 sys.path
-
-mocks:
-  path: contracts/module-b/mocks/report_service.py
+  requires:
+    - name: ledger
+      from: contracts/module-a/v1.yaml
+      description: "构造时注入的上游实例，按该契约的 implementation 字段解析"
 
 contract_tests:
   command: uv run pytest tests/contracts/module-b

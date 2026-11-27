@@ -119,12 +119,40 @@ implementation:
   module_path: modules/module-b   # 相对仓库根
   factory: "report:ReportService" # <import 名>:<类名>
   bootstrap: sys_path             # 调用方需把 module_path 加入 sys.path
+  requires:
+    - name: ledger
+      from: contracts/module-a/v1.yaml
+      description: "构造时注入的上游实例，按该契约的 implementation 字段解析"
 ```
 
 与 module-a 的差异只有值；`factory` 同样遵守 `<import 名>:<类名>`。
 B 当前无消费者，但一受理就写入，避免 mock 删除后出现「契约无入口」的真空
 （`docs/contracts/contract-format.md:68-78`）。实现轮必须补一条入口契约测试：
-按 `implementation` 解析、实例化、断言两个方法存在。
+按 `implementation` 解析、实例化、断言两个方法存在。`requires` 是收口轮新增
+（orchestrator 预批）：入口测试必须先按 `from` 指向的契约解析并构造上游实例，
+再注入 `ReportService(ledger=...)`，不能假设无参构造。
+
+### 4a. `error_surface`（收口轮新增，与 module-a 同形态）
+
+```yaml
+error_surface:
+  mechanism: exception
+  attributes: [code, http_status, retryable]
+  code_domain: error_codes
+  notes: "异常类名不是契约事实，消费者不得依赖类型名或继承关系"
+```
+
+消费者只按 `attributes` 与 `code_domain` 读 B 的错误面。B 自己抛
+`ReportError`，但类型名不是契约事实；测试只断言 `code` / `http_status` /
+`retryable`。
+
+### 4b. 删除 `mocks` 声明（收口轮）
+
+原 `mocks.path: contracts/module-b/mocks/report_service.py` 指向不存在的文件。
+B 当前 `contract.consumers` 为空，没有下游需要 mock；按
+`docs/protocol/agent-protocol.md:32-34`，mock 与真实实现并存本就视为缺陷。
+删除该节，理由记入 `CHANGELOG.md`；出现消费者时再按契约提供 mock 并写 parity
+测试，不做两份会漂移的代码。
 
 ### 5. 关键取舍
 
@@ -279,11 +307,17 @@ B 计划统一用 `**{"from": ...}`（与契约字段名逐字一致）。建议
 5. X2：B 调用上游一律写
    `list_entries(account_id=..., **{"from": from_, "to": to})`，不依赖 `from_` 别名；
    等 A-003 把 `from_parameter` 写进契约后再评估别名。
+6. 收口轮（A-003 已合入 `75dd608`）：新增 `implementation.requires`（`ledger`，
+   `from: contracts/module-a/v1.yaml`）与顶层 `error_surface`（与 A 同形态）；
+   按 A 的 `error_surface.attributes` 只读 `code` 实现 `ACCOUNT_NOT_FOUND`
+   透传，其余业务错误码抛 `RuntimeError`，测试断言不含 A 的异常类名。
+7. 收口轮删除 `mocks` 节：路径指向的文件不存在、B 无消费者；不在没有 parity
+   测试的前提下提供第二份实现。
 
 ## 判定与批准
 
 - Orchestrator 判定: **accepted**（2026-11-27）
 - 批准人 / 日期: orchestrator, 2026-11-27
 - 批准后需同步的任务: `TASK-MODULE-B-001`（第二轮实现）；
-  `TASK-MODULE-A-003`（A 补 `error_surface` + `from_parameter`，additive）；
-  A-003 合入前 B 的 `READY_FOR_REVIEW` 保持 `no`
+  `TASK-MODULE-A-003`（A 补 `error_surface` + `from_parameter`，additive，已合入
+  `75dd608`）；B 收口轮按 A 的 `error_surface` 补透传并去掉 3 个 skip
