@@ -71,7 +71,24 @@ if not_ready:
     print(f"未就绪（TBD，{'strict 下算失败' if strict else '仅告警'}）: {', '.join(not_ready)}")
 passed = sum(1 for r in rows if r[2] == "PASS")
 print(f"通过 {passed}/{len(rows)}，失败 {len(failures)}")
+
+# 供看板读取的机器可读摘要
+summary = {
+    "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "passed": passed,
+    "total": len(rows),
+    "failed": len(failures),
+    "gates": [
+        {"id": r[0], "command": r[1], "status": r[2],
+         "seconds": float(r[3]) if r[3] not in ("-", "") else 0.0, "log": r[4]}
+        for r in rows
+    ],
+}
 for f in failures:
     print("FAIL  " + f)
+with open(os.path.join(logdir, "summary.json"), "w", encoding="utf-8") as f:
+    import json
+    json.dump(summary, f, ensure_ascii=False, indent=2)
+
 sys.exit(1 if failures else 0)
 PY

@@ -38,6 +38,9 @@
 每个 Worker 的交付必须包含：分支与 SHA、改动文件清单、契约增量、
 `命令 + 退出码 + 关键输出`、未验证项。少一项视为未交付。
 
+交付报告写到 `docs/reviews/deliveries/<worker-id>/<task-id>-delivery.md`：
+这个子目录归对应 Worker（预留规则），`docs/` 其余部分仍归 orchestrator。
+
 ### 状态查看与合并
 
 - 看板：`bash scripts/dashboard.sh`（只读，127.0.0.1:7717）；没有二进制时用 `bash scripts/status.sh`。
@@ -46,6 +49,8 @@
 - 合并前必须跑 `bash scripts/merge-ready.sh <TASK-ID>` 或 `maf-dashboard --check-merge <TASK-ID>`，
   九条全过才允许合并；PR/CI 状态未接入的部分记 NOT_CHECKED，不得默认为通过。
 - 合并顺序：契约有 breaking 变更时，契约所有者先合，消费者后合。
+- **开工前先读 `.agent/inbox/<worker-id>.md`**：里面是编排者在看板上写的临时指令。
+  处理完把条目移到 `.agent/inbox/done/`，不要删除别人的条目。
 
 ### 命令
 

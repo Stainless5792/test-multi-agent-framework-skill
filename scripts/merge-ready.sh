@@ -71,13 +71,19 @@ if worktree:
 add("分支领先 base", ahead > 0, f"{ahead} 个提交")
 add("工作区干净", worktree and not dirty, "有未提交改动" if dirty else "")
 
-delivery = os.path.exists(f"docs/reviews/{task_id}-delivery.md")
+owner = t.get("owner", "")
+delivery_path = ""
+for cand in (f"docs/reviews/deliveries/{owner}/{task_id}-delivery.md",
+             f"docs/reviews/{task_id}-delivery.md"):
+    if os.path.exists(cand):
+        delivery_path = cand
+        break
 ready_flag = False
-if delivery:
-    s = open(f"docs/reviews/{task_id}-delivery.md", encoding="utf-8").read()
-    delivery = "VERIFY" in s
-    ready_flag = "READY_FOR_REVIEW: YES" in s.upper()
-add("交付报告", delivery and ready_flag, "docs/reviews/%s-delivery.md" % task_id)
+if delivery_path:
+    s = open(delivery_path, encoding="utf-8").read()
+    ready_flag = "VERIFY" in s and "READY_FOR_REVIEW: YES" in s.upper()
+add("交付报告", bool(delivery_path) and ready_flag,
+    delivery_path or ("docs/reviews/deliveries/%s/%s-delivery.md" % (owner, task_id)))
 
 def run_script(name, args):
     if not worktree:
