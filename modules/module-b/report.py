@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import date
-from typing import Any, Protocol, TypedDict
+from typing import Any, NoReturn, Protocol, TypedDict
 
 ERROR_HTTP_STATUS: dict[str, int] = {
     "ACCOUNT_NOT_FOUND": 404,
@@ -98,10 +98,22 @@ class ReportService:
         return {"items": items}
 
     def _list_entries(self, account_id: str, from_value: str, to_value: str) -> list[EntryView]:
-        response = self._ledger.list_entries(
-            account_id=account_id, **{"from": from_value, "to": to_value}
-        )
+        try:
+            response = self._ledger.list_entries(
+                account_id=account_id, **{"from": from_value, "to": to_value}
+            )
+        except Exception as exc:
+            _raise_upstream_error(exc)
         return response["entries"]
+
+
+def _raise_upstream_error(exc: Exception) -> NoReturn:
+    code = getattr(exc, "code", None)
+    if code is None:
+        raise exc
+    if code == "ACCOUNT_NOT_FOUND":
+        raise ReportError("ACCOUNT_NOT_FOUND", str(exc)) from exc
+    raise RuntimeError(f"上游返回未在 module-b 契约内的业务错误码: {code!r}") from exc
 
 
 def _require_int(value: Any, field: str) -> int:

@@ -20,13 +20,16 @@ def contract() -> dict[str, Any]:
     return loaded
 
 
-@pytest.fixture(scope="module")
-def report_module(contract: dict[str, Any]) -> Any:
-    implementation = contract["implementation"]
+def _resolve_module(implementation: dict[str, Any]) -> Any:
     module_path = str(ROOT / implementation["module_path"])
     if module_path not in sys.path:
         sys.path.insert(0, module_path)
     return importlib.import_module(implementation["factory"].split(":", 1)[0])
+
+
+@pytest.fixture(scope="module")
+def report_module(contract: dict[str, Any]) -> Any:
+    return _resolve_module(contract["implementation"])
 
 
 _MONTHLY_SEMANTICS = {
@@ -71,6 +74,14 @@ class _ExplodingLedger:
         raise AssertionError("校验顺序错误：非法输入不应触达上游")
 
 
+class _UpstreamBusinessError(Exception):
+    def __init__(self, code: str, http_status: int = 400, retryable: bool = False) -> None:
+        super().__init__(f"upstream {code}")
+        self.code = code
+        self.http_status = http_status
+        self.retryable = retryable
+
+
 def _entry(amount: int, kind: str, category: str = "a") -> dict[str, Any]:
     return {
         "amount": amount,
@@ -85,15 +96,34 @@ def test_contract_declares_accepted_semantics(contract: dict[str, Any]) -> None:
 
     assert _MONTHLY_SEMANTICS <= set(methods["monthly_summary"]["semantics"])
     assert _CATEGORY_SEMANTICS <= set(methods["category_breakdown"]["semantics"])
-    assert contract["implementation"] == {
-        "module_path": "modules/module-b",
-        "factory": "report:ReportService",
-        "bootstrap": "sys_path",
-    }
+
+    implementation = contract["implementation"]
+    assert implementation["module_path"] == "modules/module-b"
+    assert implementation["factory"] == "report:ReportService"
+    assert implementation["bootstrap"] == "sys_path"
+    assert [item["name"] for item in implementation["requires"]] == ["ledger"]
+    assert implementation["requires"][0]["from"] == "contracts/module-a/v1.yaml"
 
 
-def test_entrypoint_resolves_and_methods_are_callable(report_module: Any) -> None:
-    service = report_module.ReportService(_StubLedger())
+def test_contract_declares_error_surface(contract: dict[str, Any]) -> None:
+    surface = contract["error_surface"]
+
+    assert surface["mechanism"] == "exception"
+    assert set(surface["attributes"]) == {"code", "http_status", "retryable"}
+    assert surface["code_domain"] == "error_codes"
+    assert contract["error_codes"]
+    assert surface["code_domain"] in contract
+
+
+def test_entrypoint_resolves_with_requires(contract: dict[str, Any], report_module: Any) -> None:
+    requires = contract["implementation"]["requires"]
+    upstream_path = ROOT / requires[0]["from"]
+    upstream_contract = yaml.safe_load(upstream_path.read_text(encoding="utf-8"))
+    upstream_implementation = upstream_contract["implementation"]
+    upstream_module = _resolve_module(upstream_implementation)
+    upstream_class = getattr(upstream_module, upstream_implementation["factory"].split(":", 1)[1])
+
+    service = report_module.ReportService(ledger=upstream_class())
 
     assert report_module.ReportService.__name__ == "ReportService"
     assert callable(service.monthly_summary)
@@ -198,11 +228,10 @@ def test_upstream_call_uses_contract_field_names(report_module: Any) -> None:
     ]
 
 
-@pytest.mark.skip(reason="等待 A-003 契约 error_surface 合并")
 def test_account_not_found_passthrough(report_module: Any) -> None:
     class _MissingAccountLedger:
         def list_entries(self, account_id: str, **kwargs: Any) -> dict[str, list[dict[str, Any]]]:
-            raise NotImplementedError("A-003 合入后替换为按 error_surface 构造的上游异常")
+            raise _UpstreamBusinessError("ACCOUNT_NOT_FOUND", http_status=404)
 
     service = report_module.ReportService(_MissingAccountLedger())
 
@@ -212,3 +241,16 @@ def test_account_not_found_passthrough(report_module: Any) -> None:
     assert exc.value.code == "ACCOUNT_NOT_FOUND"
     assert exc.value.http_status == 404
     assert exc.value.retryable is False
+
+
+def test_other_upstream_business_code_is_runtime_error(report_module: Any) -> None:
+    class _UnexpectedCodeLedger:
+        def list_entries(self, account_id: str, **kwargs: Any) -> dict[str, list[dict[str, Any]]]:
+            raise _UpstreamBusinessError("INVALID_AMOUNT")
+
+    service = report_module.ReportService(_UnexpectedCodeLedger())
+
+    with pytest.raises(RuntimeError) as exc:
+        service.monthly_summary("acct", 2026, 1)
+
+    assert "INVALID_AMOUNT" in str(exc.value)

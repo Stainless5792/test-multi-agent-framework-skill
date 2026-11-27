@@ -140,14 +140,13 @@ def test_m7_invalid_period_precedes_account_lookup(report_module: Any) -> None:
     assert exc.value.code == "INVALID_PERIOD"
 
 
-@pytest.mark.skip(reason="等待 A-003 契约 error_surface 合并")
-def test_m8_unknown_account(report_module: Any) -> None:
-    service = report_module.ReportService(_ExplodingLedger())
-
+def test_m8_unknown_account(service: Any, report_module: Any) -> None:
     with pytest.raises(report_module.ReportError) as exc:
         service.monthly_summary("00000000-0000-0000-0000-000000000000", 2026, 1)
 
     assert exc.value.code == "ACCOUNT_NOT_FOUND"
+    assert exc.value.http_status == 404
+    assert exc.value.retryable is False
 
 
 def test_m9_period_year_is_zero_padded(service: Any, ledger: Any) -> None:
@@ -280,10 +279,7 @@ def test_c7_ties_sort_by_category_code_point(service: Any, ledger: Any) -> None:
     assert [item["category"] for item in items] == ["", "a", "b"]
 
 
-@pytest.mark.skip(reason="等待 A-003 契约 error_surface 合并")
-def test_c8_unknown_account(report_module: Any) -> None:
-    service = report_module.ReportService(_ExplodingLedger())
-
+def test_c8_unknown_account(service: Any, report_module: Any) -> None:
     with pytest.raises(report_module.ReportError) as exc:
         service.category_breakdown(
             "00000000-0000-0000-0000-000000000000",
@@ -291,6 +287,8 @@ def test_c8_unknown_account(report_module: Any) -> None:
         )
 
     assert exc.value.code == "ACCOUNT_NOT_FOUND"
+    assert exc.value.http_status == 404
+    assert exc.value.retryable is False
 
 
 def test_c9_range_includes_both_endpoints(service: Any, ledger: Any) -> None:
