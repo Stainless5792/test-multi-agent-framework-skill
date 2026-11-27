@@ -16,7 +16,11 @@
 | `contracts/module-a/**` | worker-module-a | 模块 A 契约 |
 | `contracts/module-b/**` | worker-module-b | 模块 B 契约 |
 | `docs/**` | orchestrator | 架构、协议、ADR、评审记录 |
+| `docs/reviews/deliveries/worker-module-a/**` | worker-module-a | 交付报告自签（AGENTS.md 预留规则） |
+| `docs/reviews/deliveries/worker-module-b/**` | worker-module-b | 交付报告自签（AGENTS.md 预留规则） |
 | `.agent/**` | orchestrator | 项目事实源与门禁 |
+| `.agent/inbox/done/worker-module-a.md` | worker-module-a | 已处理条目归档（只动自己那份） |
+| `.agent/inbox/done/worker-module-b.md` | worker-module-b | 已处理条目归档（只动自己那份） |
 | `.agent/workers/worker-module-a.json` | worker-module-a | module-a 心跳文件 |
 | `.agent/workers/worker-module-b.json` | worker-module-b | module-b 心跳文件 |
 | `scripts/**` | orchestrator | 门禁脚本，Worker 只执行不改 |

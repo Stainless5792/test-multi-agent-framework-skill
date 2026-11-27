@@ -37,7 +37,7 @@ git rev-parse --verify -q "$BASE" >/dev/null 2>&1 || BASE="HEAD"
 [ -n "$HEAD" ] || HEAD="HEAD"
 
 python3 - "$BASE" "$HEAD" "$EXPECT" "$WORKTREE" <<'PY'
-import sys, os, subprocess, re, fnmatch
+import sys, os, subprocess, re, fnmatch, glob
 base, head, expect, worktree = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
 
 def sh(args):
@@ -53,7 +53,19 @@ rows = re.findall(r"^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]*)\|?",
                   open(".agent/file-ownership.md", encoding="utf-8").read(), re.M)
 rules = [(g.strip(), o.strip()) for g, o, _ in rows if g.strip() and o.strip()]
 
+# 已知 owner：表里的 owner 列 + .opencode/agents/worker-*.md 的文件名
+known = {o for _, o in rules}
+for f in glob.glob(".opencode/agents/worker-*.md"):
+    known.add(os.path.basename(f)[:-3])
+
+# 预留规则：docs/reviews/deliveries/<X>/ 归 X，用于 Worker 自签交付报告。
+# 优先级高于表里任何行；X 不是已知 owner 时视为无主（不允许任何人写）。
+RESERVED = re.compile(r"^docs/reviews/deliveries/([A-Za-z0-9_-]+)/")
+
 def candidates(path):
+    m = RESERVED.match(path)
+    if m:
+        return [m.group(1)] if m.group(1) in known else []
     hits = []
     for pat, owner in rules:
         if fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, pat + "/**"):
