@@ -82,6 +82,21 @@ contract_tests:
   `bootstrap: package` 是目标态（`module_path` 是常规包路径，直接 `import`）。
   从 `sys_path` 迁到 `package` 只改字段值，对下游是一次 import 变更。
 - 改 `implementation` 的字段值会让下游代码失效，按「改语义」处理（major，或至少提前通知消费者）。
+- `requires` 声明「构造这个服务需要哪些上游实例、从哪份契约取」：
+
+  ```yaml
+  implementation:
+    module_path: modules/report
+    factory: "report:ReportService"
+    bootstrap: sys_path
+    requires:
+      - name: ledger                        # 构造参数名
+        from: contracts/ledger/v1.yaml      # 上游契约，按它的 implementation 字段解析
+        description: "构造时注入的上游实例"
+  ```
+
+  `requires` 只是**声明**，不是加载器：消费者仍要自己按上游契约的 `implementation` 解析出实例，
+  再按 `name` 注入。没有 `requires` 时视为无参构造；`from` 指向的契约不存在，契约测试应失败。
 
 ## 错误面（`error_surface`）
 

@@ -79,5 +79,6 @@ Mock 的三个要求：
 ## 交付物
 
 - 分支：`feature/<module>-<task-id>`，从主干切出，直接对主干开 PR。
-- 报告：`docs/reviews/<task-id>-delivery.md`，使用协议里的五段格式。
+- 报告：`docs/reviews/deliveries/<worker-id>/<task-id>-delivery.md`，使用协议里的五段格式。
+  这个目录归对应 Worker，是它的自签证据；orchestrator 不再代笔。
 - 契约增量：无变更写 `deltas: none`；有变更必须指向提案 id。

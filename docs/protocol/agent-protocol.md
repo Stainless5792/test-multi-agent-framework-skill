@@ -43,6 +43,20 @@
      双方任务同步更新后再继续。
 4. 未获批准的契约改动，`contract-check` 直接失败，PR 进不来。
 
+## 证据归属
+
+| 产物 | 谁写 | 位置 |
+|---|---|---|
+| 交付报告（自签） | Worker | `docs/reviews/deliveries/<worker-id>/<task-id>-delivery.md` |
+| 评审结论 | reviewer 在对话里给出 → orchestrator 落盘 | `docs/reviews/<task-id>-review.md` |
+| 架构、契约、所有权 | orchestrator（契约可归模块 owner） | `docs/**`、`contracts/<module>/**` |
+
+`docs/reviews/deliveries/<worker-id>/` 是预留目录，自动归对应 Worker，不需要在
+`file-ownership.md` 里逐人加行；`docs/` 其余部分仍归 orchestrator。
+
+Worker 不要请别人代写交付报告——**自签的意义就是这条 git 提交记录是你自己的**。
+reviewer 是只读的（`edit: deny`），所以评审报告只能由 orchestrator 落盘，这不是流程冗余。
+
 ## 交付格式（Worker 必须原样使用）
 
 ```
@@ -59,6 +73,28 @@ READY_FOR_REVIEW: yes|no
 ```
 
 `VERIFY` 为空、或写了 `should pass` 的报告，视为未交付。
+
+## 对话收尾：必须给出「下一步」
+
+Orchestrator、worker、reviewer 每次回答的最后一段都固定输出这一块，不许省略，
+不许并入正文。新人靠它知道现在该敲哪条命令。
+
+```
+## 下一步
+1. <具体动作> → `<可直接复制的命令>`
+2. ...
+- 等你决定：<需要人拍板的问题；给出建议默认值>
+- 当前阻塞：<无，或具体缺什么>
+```
+
+规则：
+
+- 至少 1 条动作，必须可执行：带命令、文件路径或明确的交接对象。禁止「继续推进」
+  「按需处理」这类空话。
+- 最多 3 条。收尾不是第二份计划，需要更多步骤说明任务该拆。
+- 需要人决定时写清选项与建议默认值；没有就写「无」。
+- 无事可做时写 `1. 无，收尾完成`，而不是整段省略。
+- 命令用反引号包住，方便直接复制。
 
 ## 反模式
 
