@@ -1,0 +1,7 @@
+{
+  "worker": "worker-module-a",
+  "task": "TASK-MODULE-A-001",
+  "state": "blocked",
+  "note": "等待 orchestrator 受理 F1/F2 提案",
+  "updated_at": "2026-11-27T17:58:17+08:00"
+}
