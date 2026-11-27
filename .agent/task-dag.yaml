@@ -126,7 +126,7 @@ tasks:
     title: "module-b 报表域首个可交付切片（月度汇总 / 分类统计）"
     module: module-b
     owner: worker-module-b
-    state: in_progress
+    state: review
     deps: [TASK-000]
     contracts: [contracts/module-b/v1.yaml]
     allowed_paths:
@@ -153,3 +153,64 @@ tasks:
     deliverables: [branch, report, contract_deltas]
     mock: { needed: true, path: contracts/module-a/mocks/ledger_service.py }
     blocked_by: null
+  - id: TASK-MODULE-B-002
+    title: "module-b 单测夹具切到契约入口，脱离 A 的 mock"
+    module: module-b
+    owner: worker-module-b
+    state: backlog
+    deps: [TASK-MODULE-B-001]
+    contracts: [contracts/module-b/v1.yaml, contracts/module-a/v1.yaml]
+    allowed_paths:
+      - modules/module-b/**
+      - tests/modules/module-b/**
+      - tests/contracts/module-b/**
+      - contracts/module-b/**
+    forbidden_paths:
+      - shared/**
+      - modules/module-a/**
+      - contracts/module-a/**
+      - scripts/**
+      - .agent/**
+    acceptance:
+      - tests/modules/module-b 不再引用 contracts/module-a/mocks/**
+      - 夹具按 contracts/module-a/v1.yaml 的 implementation 解析真实实现（或使用本模块自带 stub，不依赖上游文件）
+      - 删除 A 的 mock 后，B 套件仍然全绿（这是 A-004 的前置条件）
+    verify_cmds:
+      - uv run pytest tests/modules/module-b tests/contracts/module-b
+      - uv run ruff check .
+      - uv run mypy .
+      - bash scripts/ownership-check.sh origin/main HEAD --owner worker-module-b
+    deliverables: [branch, report]
+    mock: { needed: false, path: null }
+    blocked_by: null
+
+  - id: TASK-MODULE-A-004
+    title: "删除 contracts/module-a/mocks（上游实现已合入，mock 与实现并存违反协议）"
+    module: module-a
+    owner: worker-module-a
+    state: backlog
+    deps: [TASK-MODULE-B-002]
+    contracts: [contracts/module-a/v1.yaml]
+    allowed_paths:
+      - contracts/module-a/**
+      - tests/contracts/module-a/**
+    forbidden_paths:
+      - shared/**
+      - modules/**
+      - tests/modules/**
+      - contracts/module-b/**
+      - scripts/**
+      - .agent/**
+    acceptance:
+      - contracts/module-a/mocks/ 不再存在，契约里也不再有 mocks.path 指向它
+      - 契约测试与 parity 测试改为只对真实实现断言，或在删除 mock 后重写 parity 断言
+      - 全仓 uv run pytest 全绿
+    verify_cmds:
+      - uv run pytest
+      - uv run ruff check .
+      - uv run mypy .
+      - bash scripts/contract-check.sh --base origin/main
+      - bash scripts/ownership-check.sh origin/main HEAD --owner worker-module-a
+    deliverables: [branch, report]
+    mock: { needed: false, path: null }
+    blocked_by: "TASK-MODULE-B-002 必须先合并；否则 B 的单元套件会因夹具指向被删文件而变红"
