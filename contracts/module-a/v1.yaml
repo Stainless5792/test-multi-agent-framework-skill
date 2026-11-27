@@ -83,6 +83,7 @@ methods:
       order: "按 occurred_on 升序；同一日期内保持写入（创建）顺序，排序必须稳定"
       limit: "在上述排序之后取前 N 条；提供时必须为正整数，否则 ValueError"
       date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
+      from_parameter: "契约参数名 from 是 Python 关键字；调用形态 list_entries(**{'from': ...}) 与 from_ 关键字参数等价，两者必须行为一致"
 
 types:
   Account:
@@ -111,6 +112,14 @@ error_codes:
   INVALID_AMOUNT: { http: 400, retryable: false }     # <= 0 或非整数
   INVALID_CATEGORY: { http: 400, retryable: false }
   INVALID_DATE_RANGE: { http: 400, retryable: false } # from > to
+
+# 业务失败的交付形态（提案 proposals/20261127-error-surface.md，已预批）。
+# 异常类名不是契约事实：消费者只依赖 attributes 与 code_domain。
+error_surface:
+  mechanism: exception            # 业务失败以异常形式抛出，不用返回值编码
+  attributes: [code, http_status, retryable]   # 异常必须暴露的三个属性
+  code_domain: error_codes        # code 取值域就是本契约 error_codes 的键，不得新增码
+  notes: "异常类名不是契约事实，消费者不得依赖类型名或继承关系；只依赖 attributes 与 code_domain"
 
 versioning:
   strategy: semver_method
