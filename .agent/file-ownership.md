@@ -21,6 +21,7 @@
 | `ci/**` | orchestrator | CI 模板 |
 | `.opencode/**` | orchestrator | agent 与配置 |
 | `AGENTS.md` | orchestrator | 项目指令 |
+| `.gitignore` | orchestrator | 忽略规则 |
 | `requirements*.txt` | orchestrator | 依赖唯一入口 |
 | `pyproject.toml` | orchestrator | 依赖与工具链 |
 | `*.lock` | orchestrator | 锁文件 |
