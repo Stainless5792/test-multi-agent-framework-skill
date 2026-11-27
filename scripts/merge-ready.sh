@@ -90,10 +90,14 @@ if delivery_path:
     ready_flag = "VERIFY" in s and "READY_FOR_REVIEW: YES" in s.upper()
 add("交付报告", bool(delivery_path) and ready_flag, delivery_note)
 
+SCRIPT_DIR = os.path.abspath("scripts")  # merge-ready 本身从仓库根运行
+
 def run_script(name, args):
     if not worktree:
         return False, "没有 worktree"
-    r = subprocess.run(["bash", f"scripts/{name}", *args], capture_output=True, text=True, cwd=worktree)
+    # 用编排者这份门禁脚本跑 worktree 的数据：worker 分支里的 scripts/ 可能是旧版
+    r = subprocess.run(["bash", os.path.join(SCRIPT_DIR, name), *args, "--project", worktree],
+                       capture_output=True, text=True, cwd=worktree)
     lines = [l for l in (r.stdout or r.stderr).strip().splitlines() if l.strip()]
     return r.returncode == 0, (lines[-1] if lines else "")
 

@@ -49,6 +49,12 @@ error_codes:                   # 错误必须可枚举，禁止裸字符串
   USER_NOT_FOUND: { http: 404, retryable: false }
   INVALID_USER_ID: { http: 400, retryable: false }
 
+error_surface:                 # 错误怎么交到调用方；没有这条，消费者只能猜异常类名
+  mechanism: exception         # exception（抛异常） | return_value（返回值编码）
+  attributes: [code, http_status, retryable]   # 异常/返回值必须暴露的属性名
+  code_domain: error_codes     # code 的取值域就是上面那张表，不得新增码
+  notes: "异常类名不是契约事实，消费者不得依赖类型名或继承关系"
+
 versioning:
   strategy: semver_method       # 新增可选字段=minor，删字段/改类型/改语义=major
   deprecation_window: 1_release
@@ -76,6 +82,19 @@ contract_tests:
   `bootstrap: package` 是目标态（`module_path` 是常规包路径，直接 `import`）。
   从 `sys_path` 迁到 `package` 只改字段值，对下游是一次 import 变更。
 - 改 `implementation` 的字段值会让下游代码失效，按「改语义」处理（major，或至少提前通知消费者）。
+
+## 错误面（`error_surface`）
+
+`error_codes` 只说「有哪些错误」，`error_surface` 说「错误怎么交到调用方」。没有后者，下游只能靠
+猜异常类名或用 `except SomeError` 反向依赖上游实现，违反「只依赖契约」。
+
+- `mechanism: exception` 时，抛出的对象必须暴露 `attributes` 里列的属性；
+  `code` 的取值必须落在 `code_domain` 指向的表里（通常是 `error_codes`）。
+- 属性名与 `error_codes` 的列名是两套命名：`attributes` 用 `http_status`，
+  `error_codes` 用 `http`。契约应把映射写清楚（哪个属性对应哪一列），否则消费者只能从测试里反推。
+- **异常类名不是契约事实**：消费者不得 `isinstance` 或按类名 `except`，只按属性与取值判断。
+- 前置条件违反（类型/格式/必填值缺失）通常抛 `ValueError`，**不进** `error_codes`，也不受
+  `error_surface` 约束；契约应在对应方法的 `semantics` 里写明，避免被读成「所有异常都带 code」。
 
 ## 版本与兼容
 
