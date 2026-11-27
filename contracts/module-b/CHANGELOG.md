@@ -9,13 +9,15 @@
 |---|---|---|---|
 | 2026-11-27 | [`proposals/20261127-semantics.md`](proposals/20261127-semantics.md) | accepted（additive / minor） | 新增 `monthly_summary` / `category_breakdown` 的 `semantics`（自然月闭区间、`year` 1..9999、`month` 1..12、`income`/`expense` 非负、`net = income - expense`、`period` 零填充、空结果、校验顺序、错误透传、上游调用形态）；新增顶层 `implementation`（`modules/module-b` + `report:ReportService` + `sys_path`）；`types` / `error_codes` 补注释 |
 | 2026-11-27 | 同上（收口轮，orchestrator 预批） | accepted（additive / minor） | `implementation` 增 `requires: [ledger ← contracts/module-a/v1.yaml]`；新增顶层 `error_surface`（`mechanism=exception`、`attributes=[code, http_status, retryable]`、`code_domain=error_codes`）；删除指向不存在文件的 `mocks` 节 |
+| 2026-11-27 | 同上（复审收口） | accepted（patch / additive） | `year_month` 删掉「或缺省」并注明缺省由 Python 抛 `TypeError`；`error_passthrough` 补「无 `code` 异常原样透传」与 `__cause__` 仅诊断；`category_breakdown.semantics` 增 `from_parameter`；`types` 注释把「绝对值之和」统一为「之和」 |
 
 ### 兼容性
 
 - 只新增 `semantics`、`implementation`（含 `requires`）、`error_surface` 与注释，
   不删字段、不改类型、不改枚举、不改任何 `error_codes` 键；`contract.consumers`
   为空，无下游代码受影响。
-- `scripts/contract-check.sh --base origin/main` 判定无 breaking（见提案 VERIFY）。
+- `scripts/contract-check.sh --base origin/main` 判定无 breaking（实测见交付报告
+  `docs/reviews/deliveries/worker-module-b/TASK-MODULE-B-001-delivery.md` 的验证表）。
 - `category_breakdown` 只统计 `expense`；v1 不提供 `income` 维度，需要时另开方法或提案。
 
 ### 删除 `mocks` 的理由
