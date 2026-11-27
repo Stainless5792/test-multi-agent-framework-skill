@@ -90,7 +90,7 @@ tasks:
     title: "module-b 报表域首个可交付切片（月度汇总 / 分类统计）"
     module: module-b
     owner: worker-module-b
-    state: ready
+    state: in_progress
     deps: [TASK-000]
     contracts: [contracts/module-b/v1.yaml]
     allowed_paths:
