@@ -17,6 +17,8 @@
 | `contracts/module-b/**` | worker-module-b | 模块 B 契约 |
 | `docs/**` | orchestrator | 架构、协议、ADR、评审记录 |
 | `.agent/**` | orchestrator | 项目事实源与门禁 |
+| `.agent/workers/worker-module-a.json` | worker-module-a | module-a 心跳文件 |
+| `.agent/workers/worker-module-b.json` | worker-module-b | module-b 心跳文件 |
 | `scripts/**` | orchestrator | 门禁脚本，Worker 只执行不改 |
 | `ci/**` | orchestrator | CI 模板 |
 | `.opencode/**` | orchestrator | agent 与配置 |
