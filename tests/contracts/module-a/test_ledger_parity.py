@@ -176,8 +176,24 @@ def _duplicate_account_name(module: ModuleType) -> dict[str, Any]:
     return _error(module, second_same_name)
 
 
+def _date_input_rejects_non_yyyy_mm_dd(module: ModuleType) -> dict[str, Any]:
+    service, account = _open(module)
+    results: dict[str, Any] = {}
+
+    def rejects(value: str) -> Callable[[], None]:
+        def action() -> None:
+            _record(service, account, 1, "income", value)
+
+        return action
+
+    for label, value in (("compact", "20260101"), ("iso_week", "2026-W01-4")):
+        results[label] = _error(module, rejects(value))
+    return results
+
+
 SCENARIOS: dict[str, Callable[[ModuleType], dict[str, Any]]] = {
     "as_of_boundary": _as_of_boundary,
+    "date_input_rejects_non_yyyy_mm_dd": _date_input_rejects_non_yyyy_mm_dd,
     "defaults_and_normalization": _defaults_and_normalization,
     "duplicate_account_name": _duplicate_account_name,
     "invalid_amount": _invalid_amount,

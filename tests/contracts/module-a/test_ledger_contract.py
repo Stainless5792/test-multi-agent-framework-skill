@@ -369,3 +369,84 @@ def test_mock_is_standalone(ledger: ModuleType) -> None:
         pytest.skip("该断言只针对 Mock")
     source = path.read_text(encoding="utf-8")
     assert re.search(r"^\s*(from|import)\s+modules\b", source, re.MULTILINE) is None
+
+
+# 提案 20261127-entrypoint.md（已受理，方案 A）：入口由契约 implementation 唯一决定。
+def test_contract_declares_implementation_entrypoint(contract: dict) -> None:
+    implementation = contract.get("implementation")
+    assert isinstance(implementation, dict), "契约缺少 implementation 块"
+
+    factory = str(implementation.get("factory", ""))
+    module_name, _, attr = factory.partition(":")
+    assert module_name and attr, f"factory 必须写成 <import 名>:<类名>: {factory!r}"
+    assert implementation.get("module_path"), "implementation.module_path 不能为空"
+    assert implementation.get("bootstrap") == "sys_path"
+
+
+def test_contract_declares_semantics_for_stateful_methods(contract: dict) -> None:
+    methods = {method["name"]: method for method in _methods(contract)}
+
+    for name in ("record_entry", "get_balance", "list_entries"):
+        assert "semantics" in methods[name], f"{name} 缺少 semantics（提案 20261127-semantics.md）"
+    assert set(methods["record_entry"]["semantics"]) >= {
+        "amount",
+        "category_default",
+        "category_normalization",
+        "memo_default",
+        "memo_normalization",
+        "date_input",
+        "precondition_violation",
+    }
+    assert {"as_of", "amount", "date_input"} <= set(methods["get_balance"]["semantics"])
+    assert {"range", "order", "limit", "date_input"} <= set(methods["list_entries"]["semantics"])
+
+
+def test_implementation_entrypoint_resolves(contract: dict) -> None:
+    implementation = contract["implementation"]
+    module_path = (REPO_ROOT / implementation["module_path"]).resolve()
+    assert module_path.is_dir(), f"implementation.module_path 不存在: {module_path}"
+    if str(module_path) not in sys.path:
+        sys.path.insert(0, str(module_path))
+
+    module_name, _, attr = implementation["factory"].partition(":")
+    module = importlib.import_module(module_name)
+    assert module.__file__ is not None
+    assert Path(module.__file__).resolve().is_relative_to(module_path), (
+        f"factory 解析到的模块不在 module_path 下: {module.__file__}"
+    )
+
+    service = getattr(module, attr)()
+    for method in _methods(contract):
+        assert callable(getattr(service, method["name"], None)), (
+            f"入口对象缺少契约方法 {method['name']}"
+        )
+
+
+# 提案 20261127-semantics.md（已受理）：日期输入只接受 YYYY-MM-DD，长度必须为 10。
+@pytest.mark.parametrize("occurred_on", ["20260101", "2026-W01-4"])
+def test_record_entry_rejects_non_yyyy_mm_dd(ledger: ModuleType, occurred_on: str) -> None:
+    service = ledger.LedgerService()
+    account = service.create_account(name="Cash", currency="USD")["account"]
+
+    with pytest.raises(ValueError):
+        service.record_entry(
+            account_id=account["id"],
+            amount=1,
+            kind="income",
+            occurred_on=occurred_on,
+        )
+
+
+@pytest.mark.parametrize("value", ["20260101", "2026-W01-4"])
+@pytest.mark.parametrize(
+    ("method", "field"),
+    [("list_entries", "from"), ("list_entries", "to"), ("get_balance", "as_of")],
+)
+def test_read_side_rejects_non_yyyy_mm_dd(
+    ledger: ModuleType, method: str, field: str, value: str
+) -> None:
+    service = ledger.LedgerService()
+    account = service.create_account(name="Cash", currency="USD")["account"]
+
+    with pytest.raises(ValueError):
+        getattr(service, method)(account_id=account["id"], **{field: value})

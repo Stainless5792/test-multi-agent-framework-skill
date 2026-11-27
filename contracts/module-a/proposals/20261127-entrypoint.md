@@ -2,7 +2,8 @@
 
 - 提案人: worker-module-a
 - 目标契约: `contracts/module-a/v1.yaml`
-- 判定: additive（minor；不删字段、不改类型/枚举/语义）
+- 兼容性判定: additive（minor；不删字段、不改类型/枚举/语义）
+- 判定: accepted（orchestrator, 2026-11-27，方案 A + 两条约束）
 - 影响面: `worker-module-a`（实现方）、`worker-module-b`（唯一消费者）。
   无其他模块引用 `LedgerService`（`.agent/project-dependencies.yaml` 与
   `contracts/module-b/v1.yaml` 均只声明消费本契约，未声明导入方式）。
@@ -136,3 +137,16 @@ additive / minor：新增可选的 `implementation` 块，不删字段、不改�
 
 删除 `implementation` 块即可回到「mock 为唯一下游入口」的现状；无代码依赖该
 字段，回滚不影响已有测试。
+
+## 受理记录
+
+- 2026-11-27 accepted（orchestrator），采用**方案 A**。两条约束同时生效：
+  1. `factory` 统一写 `<import 名>:<类名>`，不允许下游猜模块名；
+  2. `tests/contracts/module-a/` 必须有入口测试——按契约 `implementation` 解析出
+     对象、实例化、断言契约声明的 4 个方法存在。
+- 方案 B2（`modules/module_a/` 可导入包）记为 **`TASK-MODULE-A-002`** backlog，
+  触发条件：module-a 出现第二个实现文件，或 module-b 集成测试落地前。
+  届时只需改 `implementation.module_path` / `factory` 的字段值，对下游是纯值变更。
+- 落地结果：`contracts/module-a/v1.yaml` 的 `implementation` 块、入口测试
+  `test_implementation_entrypoint_resolves`、`contracts/module-a/CHANGELOG.md`
+  （2026-11-27 条目）。

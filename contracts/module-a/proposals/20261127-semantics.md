@@ -2,7 +2,8 @@
 
 - 提案人: worker-module-a
 - 目标契约: `contracts/module-a/v1.yaml`
-- 判定: additive（minor；只补声明，不删字段、不改类型、不改枚举、不改错误码语义）
+- 兼容性判定: additive（minor；只补声明，不删字段、不改类型、不改枚举、不改错误码语义）
+- 判定: accepted（orchestrator, 2026-11-27）
 - 影响面: `worker-module-b`（月度汇总 / 分类统计直接依赖排序与区间开闭）、
   `worker-module-a`（实现与测试已按这套语义锁死）
 - 触发来源: 评审 F2 / F7（`docs/reviews/TASK-MODULE-A-001-review.md:22,27`）
@@ -39,7 +40,7 @@ methods:
       category_normalization: "去首尾空白；去空白后为空、超 64 字符或含控制字符 → INVALID_CATEGORY"
       memo_default: "未提供时 Entry.memo 输出空字符串"
       memo_normalization: "提供时去首尾空白后保存"
-      date_input: "YYYY-MM-DD（长度恰好 10）或 datetime.date；其他形态 → ValueError"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
       precondition_violation: "kind 不是 income|expense → ValueError"
 ```
 
@@ -50,6 +51,7 @@ methods:
     # ... 现有 input / output / errors 不变 ...
     semantics:
       as_of: "含当天：只累计 occurred_on <= as_of 的流水；as_of 未提供时累计全部"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
       amount: "有符号：income 合计 - expense 合计"
 ```
 
@@ -62,7 +64,7 @@ methods:
       range: "闭区间：from <= occurred_on <= to；任一端可省略，两端都可省略时返回全部"
       order: "按 occurred_on 升序；同一日期内保持写入（创建）顺序，排序必须稳定"
       limit: "在上述排序之后取前 N 条；提供时必须为正整数，否则 ValueError"
-      date_input: "YYYY-MM-DD（长度恰好 10）或 datetime.date；其他形态 → ValueError"
+      date_input: "YYYY-MM-DD（严格形态：长度 10、第 5/8 位为 -）或 datetime.date；其他形态 → ValueError"
 ```
 
 ### 4. `types.Entry` 的缺省值注释
@@ -96,13 +98,21 @@ types:
 '2026-W01-4' -> 2026-01-01     （ISO 周日期）
 ```
 
-两者契约都没写。**决定：收紧为 `len(value) == 10` + `date.fromisoformat`**，
-即只接受 `YYYY-MM-DD`，紧凑格式与周日期一律 `ValueError`。
+两者契约都没写。**决定：收紧为 `YYYY-MM-DD` 严格形态**——长度必须为 10，
+且第 5、8 位必须是 `-`，再过 `date.fromisoformat`。紧凑格式与 ISO 周日期一律
+`ValueError`。
+
+> 落地时发现：`'2026-W01-4'` 长度也是 10，只卡 `len(value) != 10` 拦不住它
+> （实测第一版用例 8 条 red）。因此判定标准补成「长度 10 + 两位分隔符」，
+> 契约 `semantics.date_input` 同步写成「严格形态：长度 10、第 5/8 位为 -」。
 
 理由：允许紧凑格式就必须同时把 ISO 周日期一并写进契约并承诺稳定——那是
 Python 3.11+ 的解析细节，把它写进稳定契约，未来收紧就是 breaking。宁可现在收紧。
 
-受理后要改的一处（本轮**未**改，见下）：
+范围：**全部日期输入**（`occurred_on` / `from` / `to` / `as_of`）共用同一校验，
+因此 `get_balance.semantics` 也带 `date_input`。
+
+受理后要改的一处（本轮已按此落地，real 与 mock 同提交）：
 
 ```diff
 --- a/modules/module-a/ledger.py
@@ -110,18 +120,21 @@ Python 3.11+ 的解析细节，把它写进稳定契约，未来收紧就是 bre
 @@
      if not isinstance(value, str):
          raise ValueError(f"{field} 必须是 ISO 8601 日期字符串")
-+    if len(value) != 10:
++    # 契约只接受 YYYY-MM-DD：光卡长度不够，ISO 周日期（2026-W01-4）也是 10 字符
++    if len(value) != 10 or value[4] != "-" or value[7] != "-":
 +        raise ValueError(f"{field} 必须是 YYYY-MM-DD: {value!r}")
      try:
          return date.fromisoformat(value)
 ```
 
-同一提交必须同步 `contracts/module-a/mocks/ledger_service.py`（当前它是
-`ledger.py` 的逐行镜像），否则 mock 会继续接受紧凑/周日期，与真实实现漂移。
+同一提交同步了 `contracts/module-a/mocks/ledger_service.py`（`ledger.py` 的逐行
+镜像），并加了两组用例：`test_record_entry_rejects_non_yyyy_mm_dd`、
+`test_read_side_rejects_non_yyyy_mm_dd`（真实实现与 mock 各跑一遍），
+parity 场景 `date_input_rejects_non_yyyy_mm_dd`。
 
-**本轮为什么不动代码**：mock 在返工清单里被冻结（「不动 mock 文件本身」），
-而只改 `ledger.py` 会制造新的 real↔mock 漂移——那正是 F3 要消灭的问题。
-代码改动放在提案受理的同一次提交里，real 与 mock 原子同步。
+**第二轮为什么没动代码**：mock 当时被冻结（「不动 mock 文件本身」），而只改
+`ledger.py` 会制造新的 real↔mock 漂移——那正是 F3 要消灭的问题。本轮受理后
+real 与 mock 原子同步。
 
 ## 兼容性判定
 

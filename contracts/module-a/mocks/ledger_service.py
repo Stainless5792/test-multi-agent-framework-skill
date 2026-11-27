@@ -100,6 +100,9 @@ def _parse_date(value: str | date, field: str) -> date:
         return value
     if not isinstance(value, str):
         raise ValueError(f"{field} 必须是 ISO 8601 日期字符串")
+    # 契约只接受 YYYY-MM-DD：光卡长度不够，ISO 周日期（2026-W01-4）也是 10 字符
+    if len(value) != 10 or value[4] != "-" or value[7] != "-":
+        raise ValueError(f"{field} 必须是 YYYY-MM-DD: {value!r}")
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
