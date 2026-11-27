@@ -48,6 +48,7 @@ _MONTHLY_SEMANTICS = {
 _CATEGORY_SEMANTICS = {
     "range",
     "date_input",
+    "from_parameter",
     "validation_order",
     "scope",
     "grouping",
@@ -80,6 +81,10 @@ class _UpstreamBusinessError(Exception):
         self.code = code
         self.http_status = http_status
         self.retryable = retryable
+
+
+class _PlainUpstreamError(Exception):
+    pass
 
 
 def _entry(amount: int, kind: str, category: str = "a") -> dict[str, Any]:
@@ -130,17 +135,43 @@ def test_entrypoint_resolves_with_requires(contract: dict[str, Any], report_modu
     assert callable(service.category_breakdown)
 
 
-def test_method_parameters_match_contract(report_module: Any) -> None:
-    monthly = inspect.signature(report_module.ReportService.monthly_summary).parameters
-    assert list(monthly) == ["self", "account_id", "year", "month"]
-    for name in ("account_id", "year", "month"):
-        assert monthly[name].default is inspect.Parameter.empty
+def test_method_parameters_match_contract(contract: dict[str, Any], report_module: Any) -> None:
+    for method in contract["methods"]:
+        parameters = inspect.signature(
+            getattr(report_module.ReportService, method["name"])
+        ).parameters
+        accepts_unknown = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+        )
+        for input_name in method["input"]:
+            if input_name in parameters:
+                continue
+            # 契约参数名 from 是 Python 关键字，实现通过 **kwargs 接收。
+            assert input_name == "from" and accepts_unknown, (
+                f"{method['name']} 未接收契约参数 {input_name}"
+            )
+        assert parameters["account_id"].default is inspect.Parameter.empty
 
-    category = inspect.signature(report_module.ReportService.category_breakdown).parameters
-    assert "account_id" in category
-    assert "to" in category
-    assert category["account_id"].default is inspect.Parameter.empty
-    assert any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in category.values())
+
+def test_monthly_summary_missing_period_argument_is_type_error(report_module: Any) -> None:
+    service = report_module.ReportService(_StubLedger())
+    method: Any = service.monthly_summary
+
+    with pytest.raises(TypeError):
+        method("acct")
+
+
+def test_category_breakdown_from_alias_and_unknown_kwarg(report_module: Any) -> None:
+    service = report_module.ReportService(_StubLedger())
+
+    via_alias = service.category_breakdown("acct", from_="2026-01-01", to="2026-01-31")
+    via_contract_name = service.category_breakdown(
+        "acct", **{"from": "2026-01-01", "to": "2026-01-31"}
+    )
+
+    assert via_alias == via_contract_name == {"items": []}
+    with pytest.raises(TypeError):
+        service.category_breakdown("acct", from_="2026-01-01", to="2026-01-31", extra=1)
 
 
 def test_category_breakdown_requires_from_and_to(report_module: Any) -> None:
@@ -254,3 +285,18 @@ def test_other_upstream_business_code_is_runtime_error(report_module: Any) -> No
         service.monthly_summary("acct", 2026, 1)
 
     assert "INVALID_AMOUNT" in str(exc.value)
+
+
+def test_upstream_exception_without_code_propagates_unchanged(report_module: Any) -> None:
+    original = _PlainUpstreamError("boom")
+
+    class _BrokenLedger:
+        def list_entries(self, account_id: str, **kwargs: Any) -> dict[str, list[dict[str, Any]]]:
+            raise original
+
+    service = report_module.ReportService(_BrokenLedger())
+
+    with pytest.raises(_PlainUpstreamError) as exc:
+        service.monthly_summary("acct", 2026, 1)
+
+    assert exc.value is original
